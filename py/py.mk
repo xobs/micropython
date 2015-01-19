@@ -112,6 +112,7 @@ PY_O_BASENAME = \
 	smallint.o \
 	pfenv.o \
 	pfenv_printf.o \
+	mpextern.o \
 	../extmod/moductypes.o \
 	../extmod/modujson.o \
 	../extmod/modure.o \

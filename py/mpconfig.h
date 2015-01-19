@@ -391,6 +391,11 @@ typedef double mp_float_t;
 #define MICROPY_PY_MICROPYTHON_MEM_INFO (0)
 #endif
 
+// Whether to support loading external native images
+#ifndef MICROPY_PY_MICROPYTHON_LOAD
+#define MICROPY_PY_MICROPYTHON_LOAD (0)
+#endif
+
 // Whether to provide "array" module. Note that large chunk of the
 // underlying code is shared with "bytearray" builtin type, so to
 // get real savings, it should be disabled too.

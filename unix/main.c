@@ -523,3 +523,25 @@ void nlr_jump_fail(void *val) {
     printf("FATAL: uncaught NLR %p\n", val);
     exit(1);
 }
+
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "py/mpextern.h"
+
+const byte *mp_extern_load_binary(const char *ext_name) {
+    int fd = open(ext_name, O_RDONLY);
+    if (fd < 0) {
+        return NULL;
+    }
+    off_t len = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+    byte *buf = m_new(byte, len);
+    ssize_t n = read(fd, buf, len);
+    if (n != len) {
+        m_del(byte, buf, len);
+        return NULL;
+    }
+    close(fd);
+    return buf;
+}

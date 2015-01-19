@@ -377,6 +377,10 @@ Q(mem_info)
 Q(qstr_info)
 #endif
 
+#if MICROPY_PY_MICROPYTHON_LOAD
+Q(load)
+#endif
+
 #if MICROPY_ENABLE_EMERGENCY_EXCEPTION_BUF && (MICROPY_EMERGENCY_EXCEPTION_BUF_SIZE == 0)
 Q(alloc_emergency_exception_buf)
 #endif

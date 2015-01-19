@@ -333,6 +333,11 @@ typedef double mp_float_t;
 #define MICROPY_MODULE_FROZEN (0)
 #endif
 
+// Whether to support loading external native modules
+#ifndef MICROPY_MODULE_EXTERN
+#define MICROPY_MODULE_EXTERN (0)
+#endif
+
 // Whether you can override builtins in the builtins module
 #ifndef MICROPY_CAN_OVERRIDE_BUILTINS
 #define MICROPY_CAN_OVERRIDE_BUILTINS (0)

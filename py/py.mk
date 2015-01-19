@@ -112,6 +112,7 @@ PY_O_BASENAME = \
 	pfenv.o \
 	pfenv_printf.o \
 	frozenmod.o \
+	mpextern.o \
 	../extmod/moductypes.o \
 	../extmod/modujson.o \
 	../extmod/modure.o \

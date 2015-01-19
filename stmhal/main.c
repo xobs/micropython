@@ -551,3 +551,31 @@ soft_reset_exit:
     first_soft_reset = false;
     goto soft_reset;
 }
+
+#include "py/mpextern.h"
+
+const byte *mp_extern_load_binary(const char *ext_name) {
+    FILINFO fno;
+#if _USE_LFN
+    fno.lfname = NULL;
+    fno.lfsize = 0;
+#endif
+    FRESULT res = f_stat(ext_name, &fno);
+    if (res != FR_OK) {
+        return NULL;
+    }
+    FIL fp;
+    res = f_open(&fp, ext_name, FA_READ);
+    if (res != FR_OK) {
+        return NULL;
+    }
+    byte *buf = m_new(byte, fno.fsize);
+    UINT n;
+    res = f_read(&fp, buf, fno.fsize, &n);
+    if (res != FR_OK) {
+        m_del(byte, buf, fno.fsize);
+        return NULL;
+    }
+    f_close(&fp);
+    return buf;
+}

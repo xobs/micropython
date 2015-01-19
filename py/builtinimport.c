@@ -35,6 +35,7 @@
 #include "py/runtime.h"
 #include "py/builtin.h"
 #include "py/frozenmod.h"
+#include "py/mpextern.h"
 
 #if 0 // print debugging info
 #define DEBUG_PRINT (1)
@@ -71,6 +72,14 @@ STATIC mp_import_stat_t stat_dir_or_file(vstr_t *path) {
     if (stat == MP_IMPORT_STAT_FILE) {
         return stat;
     }
+    #if MICROPY_MODULE_EXTERN
+    vstr_cut_tail_bytes(path, 2);
+    vstr_add_str(path, "mpy");
+    stat = mp_import_stat(vstr_null_terminated_str(path));
+    if (stat == MP_IMPORT_STAT_FILE) {
+        return stat;
+    }
+    #endif
     return MP_IMPORT_STAT_NO_EXIST;
 }
 
@@ -149,6 +158,18 @@ STATIC void chop_component(const char *start, const char **end) {
     }
     *end = p;
 }
+
+#if MICROPY_MODULE_EXTERN
+STATIC void do_load_extern(mp_obj_t module_obj, vstr_t *file) {
+    #if MICROPY_PY___FILE__
+    mp_store_attr(module_obj, MP_QSTR___file__, MP_OBJ_NEW_QSTR(qstr_from_str(vstr_str(file))));
+    #endif
+
+    // load the extern module in its context
+    mp_obj_dict_t *mod_globals = mp_obj_module_get_globals(module_obj);
+    mp_extern_load(vstr_str(file), mod_globals);
+}
+#endif
 
 mp_obj_t mp_builtin___import__(mp_uint_t n_args, const mp_obj_t *args) {
 #if DEBUG_PRINT
@@ -355,7 +376,14 @@ mp_obj_t mp_builtin___import__(mp_uint_t n_args, const mp_obj_t *args) {
                         vstr_cut_tail_bytes(&path, sizeof("/__init__.py") - 1); // cut off /__init__.py
                     }
                 } else { // MP_IMPORT_STAT_FILE
-                    do_load(module_obj, &path);
+                    #if MICROPY_MODULE_EXTERN
+                    if (path.buf[path.len - 3] == 'm') {
+                        do_load_extern(module_obj, &path);
+                    } else
+                    #endif
+                    {
+                        do_load(module_obj, &path);
+                    }
                     // TODO: We cannot just break here, at the very least, we must execute
                     // trailer code below. But otherwise if there're remaining components,
                     // that would be (??) object path within module, not modules path within FS.

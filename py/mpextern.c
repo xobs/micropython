@@ -116,7 +116,7 @@ STATIC mp_obj_t mp_extern_load(mp_obj_t ext_name) {
     mp_globals_set(gl);
 
     // call extern init
-    mp_obj_t (*f)(const mp_ext_table_t*) = (mp_obj_t(*)(const mp_ext_table_t*))(buf + 8);
+    mp_obj_t (*f)(const mp_ext_table_t*) = (mp_obj_t(*)(const mp_ext_table_t*))MICROPY_MAKE_POINTER_CALLABLE(buf + 8);
     mp_obj_t ret = f(&mp_ext_table);
 
     // pop context

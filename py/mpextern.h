@@ -32,13 +32,20 @@
 #define MP_EXT_VERSION_MAJOR (0)
 #define MP_EXT_VERSION_MINOR (0)
 #define MP_EXT_VERSION_SUBMINOR (1)
+#define MP_EXT_ARCH_X86    (1)
+#define MP_EXT_ARCH_X64    (2)
+#define MP_EXT_ARCH_ARM    (3)
+#define MP_EXT_ARCH_THUMB2 (4)
+
+// TODO auto-detect current arch
+#define MP_EXT_ARCH_CURRENT (MP_EXT_ARCH_X86)
 
 #define MP_EXT_HEADER \
     __attribute__((section(".mpyheader"))) \
     const byte header[8] = { \
         'M', 'P', 'Y', \
         MP_EXT_VERSION_MAJOR, MP_EXT_VERSION_MINOR, MP_EXT_VERSION_SUBMINOR, \
-        0, 0, \
+        MP_EXT_ARCH_CURRENT, 0, \
     };
 
 #define MP_EXT_INIT \
@@ -55,12 +62,12 @@ typedef struct _mp_ext_table_t {
     mp_obj_t (*mp_binary_op)(mp_uint_t op, mp_obj_t lhs, mp_obj_t rhs);
 } mp_ext_table_t;
 
-MP_DECLARE_CONST_FUN_OBJ(mp_extern_load_obj);
+void mp_extern_load(const char *ext_name, mp_obj_dict_t *globals);
 
 // to be implemented per-port
 const byte *mp_extern_load_binary(const char *ext_name);
 
 // entry point for the extern binary
-mp_obj_t init(const mp_ext_table_t *et);
+void init(const mp_ext_table_t *et);
 
 #endif // __MICROPY_INCLUDED_PY_MPEXTERN_H__

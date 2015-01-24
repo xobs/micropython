@@ -107,9 +107,6 @@ STATIC const mp_map_elem_t mp_module_micropython_globals_table[] = {
 #if MICROPY_ENABLE_EMERGENCY_EXCEPTION_BUF && (MICROPY_EMERGENCY_EXCEPTION_BUF_SIZE == 0)
     { MP_OBJ_NEW_QSTR(MP_QSTR_alloc_emergency_exception_buf), (mp_obj_t)&mp_alloc_emergency_exception_buf_obj },
 #endif
-#if MICROPY_PY_MICROPYTHON_LOAD
-    { MP_OBJ_NEW_QSTR(MP_QSTR_load), (mp_obj_t)&mp_extern_load_obj },
-#endif
 };
 
 STATIC MP_DEFINE_CONST_DICT(mp_module_micropython_globals, mp_module_micropython_globals_table);

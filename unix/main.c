@@ -538,10 +538,12 @@ const byte *mp_extern_load_binary(const char *ext_name) {
     }
     off_t len = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
-    byte *buf = m_new(byte, len);
+    byte *buf;
+    mp_uint_t actual_size;
+    MP_PLAT_ALLOC_EXEC(len, (void**)&buf, &actual_size);
     ssize_t n = read(fd, buf, len);
     if (n != len) {
-        m_del(byte, buf, len);
+        MP_PLAT_FREE_EXEC(buf, actual_size);
         return NULL;
     }
     close(fd);

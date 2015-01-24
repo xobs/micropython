@@ -1,6 +1,6 @@
 #include "mpextern.h"
 
-#if MICROPY_PY_MICROPYTHON_LOAD
+#if MICROPY_MODULE_EXTERN
 
 typedef mp_obj_t (*mp_fun_ext_0_t)(const mp_ext_table_t *et);
 typedef mp_obj_t (*mp_fun_ext_1_t)(const mp_ext_table_t *et, mp_obj_t);
@@ -91,8 +91,8 @@ STATIC const mp_ext_table_t mp_ext_table = {
     .mp_binary_op = mp_binary_op,
 };
 
-STATIC mp_obj_t mp_extern_load(mp_obj_t ext_name) {
-    const byte *buf = mp_extern_load_binary(mp_obj_str_get_str(ext_name));
+void mp_extern_load(const char *ext_name, mp_obj_dict_t *globals) {
+    const byte *buf = mp_extern_load_binary(ext_name);
 
     if (buf == NULL) {
         nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_OSError, "could not load MPY binary"));
@@ -106,25 +106,23 @@ STATIC mp_obj_t mp_extern_load(mp_obj_t ext_name) {
         nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, "MPY binary has wrong version"));
     }
 
-    // create new globals dict
-    mp_obj_dict_t *gl = mp_obj_new_dict(0);
+    if (buf[6] != MP_EXT_ARCH_CURRENT) {
+        nlr_raise(mp_obj_new_exception_msg(&mp_type_OSError, "MPY binary has wrong arch"));
+    }
 
     // push context
     mp_obj_dict_t *old_locals = mp_locals_get();
     mp_obj_dict_t *old_globals = mp_globals_get();
-    mp_locals_set(gl);
-    mp_globals_set(gl);
+    mp_locals_set(globals);
+    mp_globals_set(globals);
 
     // call extern init
     mp_obj_t (*f)(const mp_ext_table_t*) = (mp_obj_t(*)(const mp_ext_table_t*))MICROPY_MAKE_POINTER_CALLABLE(buf + 8);
-    mp_obj_t ret = f(&mp_ext_table);
+    f(&mp_ext_table);
 
     // pop context
     mp_globals_set(old_globals);
     mp_locals_set(old_locals);
-
-    return ret;
 }
-MP_DEFINE_CONST_FUN_OBJ_1(mp_extern_load_obj, mp_extern_load);
 
-#endif // MICROPY_PY_MICROPYTHON_LOAD
+#endif // MICROPY_MODULE_EXTERN

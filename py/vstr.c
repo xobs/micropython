@@ -35,6 +35,8 @@
 // returned value is always at least 1 greater than argument
 #define ROUND_ALLOC(a) (((a) & ((~0) - 7)) + 8)
 
+// Init the vstr so it allocs exactly given number of bytes.
+// Length is set to zero, and null byte written in first position.
 void vstr_init(vstr_t *vstr, size_t alloc) {
     if (alloc < 2) {
         // need at least 1 byte for the null byte at the end
@@ -50,6 +52,13 @@ void vstr_init(vstr_t *vstr, size_t alloc) {
     vstr->buf[0] = 0;
     vstr->had_error = false;
     vstr->fixed_buf = false;
+}
+
+// Init the vstr so it allocs exactly enough ram to hold given length (plus the
+// null terminating byte), set the length, and write the null byte at the end.
+void vstr_init_len(vstr_t *vstr, size_t len) {
+    vstr_init(vstr, len + 1);
+    vstr_add_len(vstr, len);
 }
 
 void vstr_init_fixed_buf(vstr_t *vstr, size_t alloc, char *buf) {
@@ -134,26 +143,6 @@ char *vstr_extend(vstr_t *vstr, size_t size) {
     vstr->alloc += size;
     vstr->buf = new_buf;
     return p;
-}
-
-// Shrink vstr to be given size
-bool vstr_set_size(vstr_t *vstr, size_t size) {
-    if (vstr->fixed_buf) {
-        return false;
-    }
-    char *new_buf = m_renew(char, vstr->buf, vstr->alloc, size);
-    if (new_buf == NULL) {
-        vstr->had_error = true;
-        return false;
-    }
-    vstr->buf = new_buf;
-    vstr->alloc = vstr->len = size;
-    return true;
-}
-
-// Shrink vstr allocation to its actual length
-bool vstr_shrink(vstr_t *vstr) {
-    return vstr_set_size(vstr, vstr->len);
 }
 
 STATIC bool vstr_ensure_extra(vstr_t *vstr, size_t size) {

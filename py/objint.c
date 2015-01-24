@@ -42,6 +42,7 @@
 
 // This dispatcher function is expected to be independent of the implementation of long int
 STATIC mp_obj_t mp_obj_int_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *args) {
+    (void)type_in;
     mp_arg_check_num(n_args, n_kw, 0, 2, false);
 
     switch (n_args) {
@@ -78,6 +79,7 @@ STATIC mp_obj_t mp_obj_int_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_
 }
 
 void mp_obj_int_print(void (*print)(void *env, const char *fmt, ...), void *env, mp_obj_t self_in, mp_print_kind_t kind) {
+    (void)kind;
     // The size of this buffer is rather arbitrary. If it's not large
     // enough, a dynamic one will be allocated.
     char stack_buf[sizeof(mp_int_t) * 4];
@@ -311,6 +313,7 @@ STATIC mp_obj_t int_from_bytes(mp_uint_t n_args, const mp_obj_t *args) {
     // TODO: Support long ints
     // TODO: Support byteorder param (assumes 'little' at the moment)
     // TODO: Support signed param (assumes signed=False at the moment)
+    (void)n_args;
 
     // get the buffer info
     mp_buffer_info_t bufinfo;
@@ -332,12 +335,14 @@ STATIC mp_obj_t int_to_bytes(mp_uint_t n_args, const mp_obj_t *args) {
     // TODO: Support long ints
     // TODO: Support byteorder param (assumes 'little')
     // TODO: Support signed param (assumes signed=False)
+    (void)n_args;
 
     mp_int_t val = mp_obj_int_get_checked(args[0]);
     mp_uint_t len = MP_OBJ_SMALL_INT_VALUE(args[1]);
 
-    byte *data;
-    mp_obj_t o = mp_obj_str_builder_start(&mp_type_bytes, len, &data);
+    vstr_t vstr;
+    vstr_init_len(&vstr, len);
+    byte *data = (byte*)vstr.buf;
     memset(data, 0, len);
 
     if (MP_ENDIANNESS_LITTLE) {
@@ -349,7 +354,7 @@ STATIC mp_obj_t int_to_bytes(mp_uint_t n_args, const mp_obj_t *args) {
         }
     }
 
-    return mp_obj_str_builder_end(o);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(int_to_bytes_obj, 2, 4, int_to_bytes);
 

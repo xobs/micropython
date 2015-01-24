@@ -124,6 +124,7 @@ typedef struct _vstr_t {
 #define VSTR_FIXED(vstr, alloc) vstr_t vstr; char vstr##_buf[(alloc)]; vstr_init_fixed_buf(&vstr, (alloc), vstr##_buf);
 
 void vstr_init(vstr_t *vstr, size_t alloc);
+void vstr_init_len(vstr_t *vstr, size_t len);
 void vstr_init_fixed_buf(vstr_t *vstr, size_t alloc, char *buf);
 void vstr_clear(vstr_t *vstr);
 vstr_t *vstr_new(void);
@@ -135,8 +136,6 @@ char *vstr_str(vstr_t *vstr);
 size_t vstr_len(vstr_t *vstr);
 void vstr_hint_size(vstr_t *vstr, size_t size);
 char *vstr_extend(vstr_t *vstr, size_t size);
-bool vstr_set_size(vstr_t *vstr, size_t size);
-bool vstr_shrink(vstr_t *vstr);
 char *vstr_add_len(vstr_t *vstr, size_t len);
 void vstr_add_byte(vstr_t *vstr, byte v);
 void vstr_add_char(vstr_t *vstr, unichar chr);

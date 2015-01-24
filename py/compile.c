@@ -1229,9 +1229,9 @@ STATIC void compile_decorated(compiler_t *comp, mp_parse_node_struct_t *pns) {
 
             // compile the decorator function
             compile_node(comp, name_nodes[0]);
-            for (int i = 1; i < name_len; i++) {
-                assert(MP_PARSE_NODE_IS_ID(name_nodes[i])); // should be
-                EMIT_ARG(load_attr, MP_PARSE_NODE_LEAF_ARG(name_nodes[i]));
+            for (int j = 1; j < name_len; j++) {
+                assert(MP_PARSE_NODE_IS_ID(name_nodes[j])); // should be
+                EMIT_ARG(load_attr, MP_PARSE_NODE_LEAF_ARG(name_nodes[j]));
             }
 
             // nodes[1] contains arguments to the decorator function, if any
@@ -2624,8 +2624,9 @@ STATIC void compile_atom_string(compiler_t *comp, mp_parse_node_struct_t *pns) {
     }
 
     // concatenate string/bytes
-    byte *s_dest;
-    mp_obj_t obj = mp_obj_str_builder_start(string_kind == MP_PARSE_NODE_STRING ? &mp_type_str : &mp_type_bytes, n_bytes, &s_dest);
+    vstr_t vstr;
+    vstr_init_len(&vstr, n_bytes);
+    byte *s_dest = (byte*)vstr.buf;
     for (int i = 0; i < n; i++) {
         if (MP_PARSE_NODE_IS_LEAF(pns->nodes[i])) {
             mp_uint_t s_len;
@@ -2640,7 +2641,7 @@ STATIC void compile_atom_string(compiler_t *comp, mp_parse_node_struct_t *pns) {
     }
 
     // load the object
-    EMIT_ARG(load_const_obj, mp_obj_str_builder_end(obj));
+    EMIT_ARG(load_const_obj, mp_obj_new_str_from_vstr(string_kind == MP_PARSE_NODE_STRING ? &mp_type_str : &mp_type_bytes, &vstr));
 }
 
 // pns needs to have 2 nodes, first is lhs of comprehension, second is PN_comp_for node
@@ -2778,9 +2779,9 @@ STATIC void compile_atom_brace(compiler_t *comp, mp_parse_node_struct_t *pns) {
 
                 // process rest of elements
                 for (int i = 0; i < n; i++) {
-                    mp_parse_node_t pn = nodes[i];
-                    bool is_key_value = MP_PARSE_NODE_IS_STRUCT_KIND(pn, PN_dictorsetmaker_item);
-                    compile_node(comp, pn);
+                    mp_parse_node_t pn_i = nodes[i];
+                    bool is_key_value = MP_PARSE_NODE_IS_STRUCT_KIND(pn_i, PN_dictorsetmaker_item);
+                    compile_node(comp, pn_i);
                     if (is_dict) {
                         if (!is_key_value) {
                             compile_syntax_error(comp, (mp_parse_node_t)pns, "expecting key:value for dictionary");
@@ -3210,6 +3211,9 @@ STATIC void check_for_doc_string(compiler_t *comp, mp_parse_node_t pn) {
                 EMIT_ARG(store_id, MP_QSTR___doc__);
         }
     }
+#else
+    (void)comp;
+    (void)pn;
 #endif
 }
 
@@ -3489,12 +3493,12 @@ STATIC void compile_scope_inline_asm(compiler_t *comp, scope_t *scope, pass_kind
             }
             if (pass > MP_PASS_SCOPE) {
                 mp_int_t bytesize = MP_PARSE_NODE_LEAF_SMALL_INT(pn_arg[0]);
-                for (uint i = 1; i < n_args; i++) {
-                    if (!MP_PARSE_NODE_IS_SMALL_INT(pn_arg[i])) {
+                for (uint j = 1; j < n_args; j++) {
+                    if (!MP_PARSE_NODE_IS_SMALL_INT(pn_arg[j])) {
                         compile_syntax_error(comp, nodes[i], "inline assembler 'data' requires integer arguments");
                         return;
                     }
-                    EMIT_INLINE_ASM_ARG(data, bytesize, MP_PARSE_NODE_LEAF_SMALL_INT(pn_arg[i]));
+                    EMIT_INLINE_ASM_ARG(data, bytesize, MP_PARSE_NODE_LEAF_SMALL_INT(pn_arg[j]));
                 }
             }
         } else {
@@ -3514,7 +3518,7 @@ STATIC void compile_scope_inline_asm(compiler_t *comp, scope_t *scope, pass_kind
 }
 #endif
 
-STATIC void compile_scope_compute_things(compiler_t *comp, scope_t *scope) {
+STATIC void scope_compute_things(scope_t *scope) {
 #if !MICROPY_EMIT_CPYTHON
     // in Micro Python we put the *x parameter after all other parameters (except **y)
     if (scope->scope_flags & MP_SCOPE_FLAG_VARARGS) {
@@ -3678,7 +3682,7 @@ mp_obj_t mp_compile(mp_parse_node_t pn, qstr source_file, uint emit_opt, bool is
 
     // compute some things related to scope and identifiers
     for (scope_t *s = comp->scope_head; s != NULL && comp->compile_error == MP_OBJ_NULL; s = s->next) {
-        compile_scope_compute_things(comp, s);
+        scope_compute_things(s);
     }
 
     // finish with pass 1

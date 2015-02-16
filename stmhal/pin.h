@@ -85,6 +85,7 @@ extern const mp_obj_dict_t pin_board_pins_locals_dict;
 MP_DECLARE_CONST_FUN_OBJ(pin_init_obj);
 
 void pin_init0(void);
+void pin_deinit(void);
 uint32_t pin_get_mode(const pin_obj_t *pin);
 uint32_t pin_get_pull(const pin_obj_t *pin);
 uint32_t pin_get_af(const pin_obj_t *pin);

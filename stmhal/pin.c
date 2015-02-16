@@ -32,6 +32,7 @@
 #include "py/runtime.h"
 #include MICROPY_HAL_H
 #include "pin.h"
+#include "extint.h"
 
 /// \moduleref pyb
 /// \class Pin - control I/O pins
@@ -90,6 +91,13 @@
 /// You can set `pyb.Pin.debug(True)` to get some debug information about
 /// how a particular object gets mapped to a pin.
 
+STATIC const uint8_t nvic_irq_channel[EXTI_NUM_VECTORS] = {
+    EXTI0_IRQn,     EXTI1_IRQn,     EXTI2_IRQn,     EXTI3_IRQn,     EXTI4_IRQn,
+    EXTI9_5_IRQn,   EXTI9_5_IRQn,   EXTI9_5_IRQn,   EXTI9_5_IRQn,   EXTI9_5_IRQn,
+    EXTI15_10_IRQn, EXTI15_10_IRQn, EXTI15_10_IRQn, EXTI15_10_IRQn, EXTI15_10_IRQn,
+    EXTI15_10_IRQn,
+};
+
 // Pin class variables
 STATIC bool pin_class_debug;
 
@@ -97,6 +105,12 @@ void pin_init0(void) {
     MP_STATE_PORT(pin_class_mapper) = mp_const_none;
     MP_STATE_PORT(pin_class_map_dict) = mp_const_none;
     pin_class_debug = false;
+}
+
+void pin_deinit(void) {
+    for (int i = 0; i < 16; i++) {
+        HAL_NVIC_DisableIRQ(nvic_irq_channel[i]);
+   }
 }
 
 // C API used to convert a user-supplied pin name into an ordinal pin number.
@@ -328,32 +342,32 @@ STATIC MP_DEFINE_CONST_CLASSMETHOD_OBJ(pin_debug_obj, (mp_obj_t)&pin_debug_fun_o
 ///     of one of the alternate functions associated with a pin.
 ///
 /// Returns: `None`.
-STATIC const mp_arg_t pin_init_args[] = {
-    { MP_QSTR_mode, MP_ARG_REQUIRED | MP_ARG_INT },
-    { MP_QSTR_pull,                   MP_ARG_INT, {.u_int = GPIO_NOPULL}},
-    { MP_QSTR_af,                     MP_ARG_INT, {.u_int = -1}},
-};
-#define PIN_INIT_NUM_ARGS MP_ARRAY_SIZE(pin_init_args)
+STATIC mp_obj_t pin_obj_init_helper(const pin_obj_t *self, mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    static const mp_arg_t allowed_args[] = {
+        { MP_QSTR_mode, MP_ARG_REQUIRED | MP_ARG_INT },
+        { MP_QSTR_pull, MP_ARG_INT, {.u_int = GPIO_NOPULL}},
+        { MP_QSTR_af, MP_ARG_INT, {.u_int = -1}},
+        { MP_QSTR_callback, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = mp_const_none}},
+    };
 
-STATIC mp_obj_t pin_obj_init_helper(const pin_obj_t *self, mp_uint_t n_args, const mp_obj_t *args, mp_map_t *kw_args) {
     // parse args
-    mp_arg_val_t vals[PIN_INIT_NUM_ARGS];
-    mp_arg_parse_all(n_args, args, kw_args, PIN_INIT_NUM_ARGS, pin_init_args, vals);
+    mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
+    mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
     // get io mode
-    uint mode = vals[0].u_int;
+    uint mode = args[0].u_int;
     if (!IS_GPIO_MODE(mode)) {
         nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "invalid pin mode: %d", mode));
     }
 
     // get pull mode
-    uint pull = vals[1].u_int;
+    uint pull = args[1].u_int;
     if (!IS_GPIO_PULL(pull)) {
         nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "invalid pin pull: %d", pull));
     }
 
     // get af (alternate function)
-    mp_int_t af = vals[2].u_int;
+    mp_int_t af = args[2].u_int;
     if ((mode == GPIO_MODE_AF_PP || mode == GPIO_MODE_AF_OD) && !IS_GPIO_AF(af)) {
         nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "invalid pin af: %d", af));
     }
@@ -390,6 +404,19 @@ STATIC mp_obj_t pin_obj_init_helper(const pin_obj_t *self, mp_uint_t n_args, con
         #ifdef __GPIOJ_CLK_ENABLE
         case PORT_J: __GPIOJ_CLK_ENABLE(); break;
         #endif
+    }
+
+    // configure callback
+    if (args[3].u_obj != mp_const_none) {
+        mp_obj_t *cb = &MP_STATE_PORT(pyb_extint_callback)[self->pin];
+        if (*cb != mp_const_none) {
+            nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "Pin already has callback in use"));
+        }
+        extint_disable(self->pin);
+        *cb = args[3].u_obj;
+        HAL_NVIC_SetPriority(nvic_irq_channel[self->pin & 0xf], 0xf, 0xf);
+        HAL_NVIC_EnableIRQ(nvic_irq_channel[self->pin & 0xf]);
+        // HAL_GPIO_Init below will enable EXTI if mode is a valid EXTI mode
     }
 
     // configure the GPIO as requested
@@ -555,21 +582,15 @@ STATIC const mp_map_elem_t pin_locals_dict_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR_cpu),     (mp_obj_t)&pin_cpu_pins_obj_type },
 
     // class constants
-    /// \constant IN - initialise the pin to input mode
-    /// \constant OUT_PP - initialise the pin to output mode with a push-pull drive
-    /// \constant OUT_OD - initialise the pin to output mode with an open-drain drive
-    /// \constant AF_PP - initialise the pin to alternate-function mode with a push-pull drive
-    /// \constant AF_OD - initialise the pin to alternate-function mode with an open-drain drive
-    /// \constant ANALOG - initialise the pin to analog mode
-    /// \constant PULL_NONE - don't enable any pull up or down resistors on the pin
-    /// \constant PULL_UP - enable the pull-up resistor on the pin
-    /// \constant PULL_DOWN - enable the pull-down resistor on the pin
     { MP_OBJ_NEW_QSTR(MP_QSTR_IN),        MP_OBJ_NEW_SMALL_INT(GPIO_MODE_INPUT) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_OUT_PP),    MP_OBJ_NEW_SMALL_INT(GPIO_MODE_OUTPUT_PP) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_OUT_OD),    MP_OBJ_NEW_SMALL_INT(GPIO_MODE_OUTPUT_OD) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_AF_PP),     MP_OBJ_NEW_SMALL_INT(GPIO_MODE_AF_PP) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_AF_OD),     MP_OBJ_NEW_SMALL_INT(GPIO_MODE_AF_OD) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_ANALOG),    MP_OBJ_NEW_SMALL_INT(GPIO_MODE_ANALOG) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_INT_RISING), MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_RISING) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_INT_FALLING), MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_FALLING) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_INT_RISING_FALLING), MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_RISING_FALLING) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_PULL_NONE), MP_OBJ_NEW_SMALL_INT(GPIO_NOPULL) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_PULL_UP),   MP_OBJ_NEW_SMALL_INT(GPIO_PULLUP) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_PULL_DOWN), MP_OBJ_NEW_SMALL_INT(GPIO_PULLDOWN) },

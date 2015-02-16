@@ -542,6 +542,8 @@ soft_reset_exit:
     storage_flush();
 
     printf("PYB: soft reboot\n");
+
+    pin_deinit();
     timer_deinit();
     uart_deinit();
 #if MICROPY_HW_ENABLE_CAN

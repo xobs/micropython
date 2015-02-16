@@ -50,7 +50,7 @@
 ///
 /// Note: ExtInt will automatically configure the gpio line as an input.
 ///
-///     extint = pyb.ExtInt(pin, pyb.ExtInt.IRQ_FALLING, pyb.Pin.PULL_UP, callback)
+///     extint = pyb.ExtInt(pin, pyb.ExtInt.INT_FALLING, pyb.Pin.PULL_UP, callback)
 ///
 /// Now every time a falling edge is seen on the X1 pin, the callback will be
 /// called. Caution: mechanical pushbuttons have "bounce" and pushing or
@@ -68,11 +68,11 @@
 ///
 ///     extint = pyb.ExtInt(pin, mode, pull, callback)
 ///
-/// Valid modes are pyb.ExtInt.IRQ_RISING, pyb.ExtInt.IRQ_FALLING,
-/// pyb.ExtInt.IRQ_RISING_FALLING, pyb.ExtInt.EVT_RISING,
+/// Valid modes are pyb.ExtInt.INT_RISING, pyb.ExtInt.INT_FALLING,
+/// pyb.ExtInt.INT_RISING_FALLING, pyb.ExtInt.EVT_RISING,
 /// pyb.ExtInt.EVT_FALLING, and pyb.ExtInt.EVT_RISING_FALLING.
 ///
-/// Only the IRQ_xxx modes have been tested. The EVT_xxx modes have
+/// Only the INT_xxx modes have been tested. The EVT_xxx modes have
 /// something to do with sleep mode and the WFE instruction.
 ///
 /// Valid pull values are pyb.Pin.PULL_UP, pyb.Pin.PULL_DOWN, pyb.Pin.PULL_NONE.
@@ -264,9 +264,9 @@ STATIC MP_DEFINE_CONST_STATICMETHOD_OBJ(extint_regs_obj, (mp_obj_t)&extint_regs_
 ///
 ///   - `pin` is the pin on which to enable the interrupt (can be a pin object or any valid pin name).
 ///   - `mode` can be one of:
-///     - `ExtInt.IRQ_RISING` - trigger on a rising edge;
-///     - `ExtInt.IRQ_FALLING` - trigger on a falling edge;
-///     - `ExtInt.IRQ_RISING_FALLING` - trigger on a rising or falling edge.
+///     - `ExtInt.INT_RISING` - trigger on a rising edge;
+///     - `ExtInt.INT_FALLING` - trigger on a falling edge;
+///     - `ExtInt.INT_RISING_FALLING` - trigger on a rising or falling edge.
 ///   - `pull` can be one of:
 ///     - `pyb.Pin.PULL_NONE` - no pull up or down resistors;
 ///     - `pyb.Pin.PULL_UP` - enable the pull-up resistor;
@@ -309,12 +309,9 @@ STATIC const mp_map_elem_t extint_locals_dict_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR_regs),    (mp_obj_t)&extint_regs_obj },
 
     // class constants
-    /// \constant IRQ_RISING - interrupt on a rising edge
-    /// \constant IRQ_FALLING - interrupt on a falling edge
-    /// \constant IRQ_RISING_FALLING - interrupt on a rising or falling edge
-    { MP_OBJ_NEW_QSTR(MP_QSTR_IRQ_RISING),         MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_RISING) },
-    { MP_OBJ_NEW_QSTR(MP_QSTR_IRQ_FALLING),        MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_FALLING) },
-    { MP_OBJ_NEW_QSTR(MP_QSTR_IRQ_RISING_FALLING), MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_RISING_FALLING) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_INT_RISING),         MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_RISING) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_INT_FALLING),        MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_FALLING) },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_INT_RISING_FALLING), MP_OBJ_NEW_SMALL_INT(GPIO_MODE_IT_RISING_FALLING) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_EVT_RISING),         MP_OBJ_NEW_SMALL_INT(GPIO_MODE_EVT_RISING) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_EVT_FALLING),        MP_OBJ_NEW_SMALL_INT(GPIO_MODE_EVT_FALLING) },
     { MP_OBJ_NEW_QSTR(MP_QSTR_EVT_RISING_FALLING), MP_OBJ_NEW_SMALL_INT(GPIO_MODE_EVT_RISING_FALLING) },

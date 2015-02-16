@@ -42,8 +42,8 @@
 #define PIN(p_pin_name, p_port, p_bit, p_pin_num) \
 { \
     { &pin_type }, \
-    .name    = MP_QSTR_ ## p_pin_name, \
-    .port    = PORT_A ## p_port, \
-    .bit     = (p_bit), \
-    .pin_num = (p_pin_num) \
+    .name     = MP_QSTR_ ## p_pin_name, \
+    .port     = PORT_A ## p_port, \
+    .bit      = (p_bit), \
+    .pin_num  = (p_pin_num) \
 }

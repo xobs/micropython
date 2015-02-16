@@ -32,6 +32,7 @@
 
 typedef struct {
   mp_obj_base_t base;
+  mp_obj_t callback;
   qstr name;
   uint32_t port;
   uint32_t bit           : 8;
@@ -58,9 +59,14 @@ MP_DECLARE_CONST_FUN_OBJ(pin_init_obj);
 
 void pin_init0(void);
 void pin_config(const pin_obj_t *self, uint af, uint mode, uint type, uint strength);
+void pin_extint_register(pin_obj_t *self, uint32_t intmode, mp_obj_t callback);
+void pin_extint_enable(pin_obj_t *self);
+void pin_extint_disable(pin_obj_t *self);
+void pin_extint_swint(pin_obj_t *self);
 const pin_obj_t *pin_find(mp_obj_t user_obj);
 const pin_obj_t *pin_find_named_pin(const mp_obj_dict_t *named_pins, mp_obj_t name);
 const pin_obj_t *pin_find_pin(const mp_obj_dict_t *named_pins, uint pin_num);
+const pin_obj_t *pin_find_pin_by_port_bit (const mp_obj_dict_t *named_pins, uint port, uint bit);
 uint32_t pin_get_mode(const pin_obj_t *self);
 uint32_t pin_get_type(const pin_obj_t *self);
 uint32_t pin_get_strenght(const pin_obj_t *self);

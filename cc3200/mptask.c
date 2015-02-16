@@ -65,7 +65,6 @@
 #include "sflash_diskio.h"
 #include "mpexception.h"
 #include "random.h"
-#include "pybextint.h"
 #include "pybi2c.h"
 #include "pins.h"
 
@@ -161,7 +160,6 @@ soft_reset:
     MP_STATE_PORT(pyb_stdio_uart) = pyb_uart_type.make_new((mp_obj_t)&pyb_uart_type, MP_ARRAY_SIZE(args), 0, args);
 
     readline_init0();
-    extint_init0();
     mod_network_init();
     wlan_init0();
 #if MICROPY_HW_ENABLE_RNG

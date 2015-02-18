@@ -1,3 +1,4 @@
+# Make the build directory reflect the board name
 BUILD = bootmgr/build/$(BOARD)
 
 BOOT_INC  = -Ibootmgr
@@ -69,9 +70,6 @@ LDFLAGS += -T $(LINKER_SCRIPT)
 
 # Add the bootloader specific CFLAGS
 CFLAGS += $(BOOT_CPPDEFINES) $(BOOT_INC)
-
-# Optimize for size all sources except for main
-
 
 # Disable strict aliasing for the simplelink driver
 $(BUILD)/simplelink/source/driver.o: CFLAGS += -fno-strict-aliasing

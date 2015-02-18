@@ -151,9 +151,4 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 version. */
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 1
 
-#ifdef DEBUG
-#include "debug.h"
-#define configASSERT( x )                       ASSERT( x )
-#endif
-
 #endif /* FREERTOS_CONFIG_H */

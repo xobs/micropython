@@ -1,3 +1,12 @@
+# Make the build directory reflect the board name
+BUILD = build/$(BOARD)
+
+# qstr definitions (must come before including py.mk)
+QSTR_DEFS = qstrdefsport.h $(BUILD)/pins_qstr.h
+
+# include MicroPython make definitions
+include ../py/py.mk
+
 APP_INC =  -I.
 APP_INC += -I..
 APP_INC += -Ifatfs/src
@@ -79,6 +88,7 @@ APP_MISC_SRC_C = $(addprefix misc/,\
 	help.c \
 	mperror.c \
 	mpexception.c \
+	mploadbinary.c \
 	pin_defs_cc3200.c \
 	)
 

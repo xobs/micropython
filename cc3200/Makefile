@@ -5,9 +5,6 @@ ifeq ($(wildcard boards/$(BOARD)/.),)
 $(error Invalid BOARD specified)
 endif
 
-# If the build directory is not given, make it reflect the board name.
-BUILD ?= build/$(BOARD)
-
 include ../py/mkenv.mk
 -include ../../localconfig.mk
 
@@ -23,16 +20,16 @@ CFLAGS += -Iboards/$(BOARD)
 LDFLAGS = -Wl,-nostdlib -Wl,--gc-sections -Wl,-Map=$@.map --specs=nano.specs
 
 ifeq ($(BTARGET), application)
-# qstr definitions (must come before including py.mk)
-QSTR_DEFS = qstrdefsport.h $(BUILD)/pins_qstr.h
-# include MicroPython make definitions
-include ../py/py.mk
 include application.mk
 else
 ifeq ($(BTARGET), bootloader)
 include bootmgr/bootloader.mk
 else
+ifeq ($(BTARGET), modx)
+include mods/modx/modx.mk
+else
 $(error Invalid BTARGET specified)
+endif
 endif
 endif
 

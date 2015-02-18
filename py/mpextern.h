@@ -4,6 +4,7 @@
  * The MIT License (MIT)
  *
  * Copyright (c) 2015 Damien P. George
+ * Copyright (c) 2015 Daniel Campora
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +29,7 @@
 
 #include "py/runtime0.h"
 #include "py/runtime.h"
+#include "py/mpconfig.h"
 
 #define MP_EXT_VERSION_MAJOR (0)
 #define MP_EXT_VERSION_MINOR (0)
@@ -37,8 +39,15 @@
 #define MP_EXT_ARCH_ARM    (3)
 #define MP_EXT_ARCH_THUMB2 (4)
 
-// TODO auto-detect current arch
+#if defined(__i386__)
 #define MP_EXT_ARCH_CURRENT (MP_EXT_ARCH_X86)
+#elif defined(__x86_64__)
+#define MP_EXT_ARCH_CURRENT (MP_EXT_ARCH_X64)
+#elif defined(__arm__)
+#define MP_EXT_ARCH_CURRENT (MP_EXT_ARCH_ARM)
+#elif defined(__thumb2__)
+#define MP_EXT_ARCH_CURRENT (MP_EXT_ARCH_THUMB2)
+#endif
 
 #define MP_EXT_HEADER \
     __attribute__((section(".mpyheader"))) \
@@ -60,6 +69,7 @@ typedef struct _mp_ext_table_t {
     void (*mp_store_global)(qstr qst, mp_obj_t obj);
     mp_obj_t (*mp_obj_new_list)(mp_uint_t n, mp_obj_t *items);
     mp_obj_t (*mp_binary_op)(mp_uint_t op, mp_obj_t lhs, mp_obj_t rhs);
+    mp_int_t (*mp_obj_get_int)(mp_const_obj_t arg);
 } mp_ext_table_t;
 
 void mp_extern_load(const char *ext_name, mp_obj_dict_t *globals);

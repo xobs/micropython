@@ -89,6 +89,7 @@ STATIC const mp_ext_table_t mp_ext_table = {
     .mp_store_global = mp_store_global,
     .mp_obj_new_list = mp_obj_new_list,
     .mp_binary_op = mp_binary_op,
+    .mp_obj_get_int = mp_obj_get_int,
 };
 
 void mp_extern_load(const char *ext_name, mp_obj_dict_t *globals) {

@@ -34,7 +34,10 @@ script:
   - (cd tests && MICROPY_CPYTHON3=python3.4 ./run-tests -d micropython)
 
 after_success:
-  - (cd unix && coveralls --build-root . --gcov-options '\-o build-coverage/')
+  - echo $(which gcov)
+  - echo $(which gcov-4.6)
+  - echo $(which gcov-4.7)
+  - (cd unix && coveralls --build-root . --gcov $(which gcov-4.7) --gcov-options '\-o build-coverage/')
 
 after_failure:
   - (cd tests && for exp in *.exp; do testbase=$(basename $exp .exp); echo -e "\nFAILURE $testbase"; diff -u $testbase.exp $testbase.out; done)

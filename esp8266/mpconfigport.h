@@ -9,7 +9,8 @@
 #define MICROPY_MEM_STATS           (0)
 #define MICROPY_DEBUG_PRINTERS      (0)
 #define MICROPY_ENABLE_GC           (1)
-#define MICROPY_STACK_CHECK         (1)
+#define MICROPY_STACK_CHECK         (0)
+#define MICROPY_REPL_EVENT_DRIVEN   (1)
 #define MICROPY_HELPER_REPL         (1)
 #define MICROPY_HELPER_LEXER_UNIX   (0)
 #define MICROPY_ENABLE_SOURCE_LINE  (1)
@@ -58,9 +59,11 @@ extern const struct _mp_obj_fun_builtin_t mp_builtin_open_obj;
 
 // extra built in modules to add to the list of known ones
 extern const struct _mp_obj_module_t pyb_module;
+extern const struct _mp_obj_module_t esp_module;
 
 #define MICROPY_PORT_BUILTIN_MODULES \
     { MP_OBJ_NEW_QSTR(MP_QSTR_pyb), (mp_obj_t)&pyb_module }, \
+    { MP_OBJ_NEW_QSTR(MP_QSTR_esp), (mp_obj_t)&esp_module }, \
 
 #define MP_STATE_PORT MP_STATE_VM
 

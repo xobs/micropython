@@ -37,6 +37,7 @@
 #include "py/runtime.h"
 #include "py/stackctrl.h"
 #include "py/pfenv.h"
+#include "py/stream.h" // for mp_obj_print
 
 mp_obj_type_t *mp_obj_get_type(mp_const_obj_t o_in) {
     if (MP_OBJ_IS_SMALL_INT(o_in)) {
@@ -56,7 +57,7 @@ const char *mp_obj_get_type_str(mp_const_obj_t o_in) {
 void mp_obj_print_helper(void (*print)(void *env, const char *fmt, ...), void *env, mp_obj_t o_in, mp_print_kind_t kind) {
     // There can be data structures nested too deep, or just recursive
     MP_STACK_CHECK();
-#if !NDEBUG
+#ifndef NDEBUG
     if (o_in == NULL) {
         print(env, "(nil)");
         return;
@@ -71,7 +72,16 @@ void mp_obj_print_helper(void (*print)(void *env, const char *fmt, ...), void *e
 }
 
 void mp_obj_print(mp_obj_t o_in, mp_print_kind_t kind) {
+#if MICROPY_PY_IO
+    // defined per port; type of these is irrelevant, just need pointer
+    extern mp_uint_t mp_sys_stdout_obj;
+    pfenv_t pfenv;
+    pfenv.data = &mp_sys_stdout_obj;
+    pfenv.print_strn = (void (*)(void *, const char *, mp_uint_t))mp_stream_write;
+    mp_obj_print_helper((void (*)(void *env, const char *fmt, ...))pfenv_printf, &pfenv, o_in, kind);
+#else
     mp_obj_print_helper(printf_wrapper, NULL, o_in, kind);
+#endif
 }
 
 // helper function to print an exception with traceback
@@ -393,11 +403,11 @@ mp_uint_t mp_get_index(const mp_obj_type_t *type, mp_uint_t len, mp_obj_t index,
     if (is_slice) {
         if (i < 0) {
             i = 0;
-        } else if (i > len) {
+        } else if ((mp_uint_t)i > len) {
             i = len;
         }
     } else {
-        if (i < 0 || i >= len) {
+        if (i < 0 || (mp_uint_t)i >= len) {
             if (MICROPY_ERROR_REPORTING == MICROPY_ERROR_REPORTING_TERSE) {
                 nlr_raise(mp_obj_new_exception_msg(&mp_type_IndexError, "index out of range"));
             } else {

@@ -77,6 +77,7 @@ STATIC mp_int_t array_get_buffer(mp_obj_t o_in, mp_buffer_info_t *bufinfo, mp_ui
 
 #if MICROPY_PY_BUILTINS_BYTEARRAY || MICROPY_PY_ARRAY
 STATIC void array_print(void (*print)(void *env, const char *fmt, ...), void *env, mp_obj_t o_in, mp_print_kind_t kind) {
+    (void)kind;
     mp_obj_array_t *o = o_in;
     if (o->typecode == BYTEARRAY_TYPECODE) {
         print(env, "bytearray(b");
@@ -115,7 +116,7 @@ STATIC mp_obj_array_t *array_new(char typecode, mp_uint_t n) {
     o->typecode = typecode;
     o->free = 0;
     o->len = n;
-    o->items = m_malloc(typecode_size * o->len);
+    o->items = m_new(byte, typecode_size * o->len);
     return o;
 }
 #endif
@@ -168,6 +169,7 @@ STATIC mp_obj_t array_construct(char typecode, mp_obj_t initializer) {
 
 #if MICROPY_PY_ARRAY
 STATIC mp_obj_t array_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *args) {
+    (void)type_in;
     mp_arg_check_num(n_args, n_kw, 1, 2, false);
 
     // get typecode
@@ -186,6 +188,7 @@ STATIC mp_obj_t array_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_k
 
 #if MICROPY_PY_BUILTINS_BYTEARRAY
 STATIC mp_obj_t bytearray_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *args) {
+    (void)type_in;
     mp_arg_check_num(n_args, n_kw, 0, 1, false);
 
     if (n_args == 0) {
@@ -295,7 +298,7 @@ STATIC mp_obj_t array_append(mp_obj_t self_in, mp_obj_t arg) {
         int item_sz = mp_binary_get_size('@', self->typecode, NULL);
         // TODO: alloc policy
         self->free = 8;
-        self->items = m_realloc(self->items,  item_sz * self->len, item_sz * (self->len + self->free));
+        self->items = m_renew(byte, self->items, item_sz * self->len, item_sz * (self->len + self->free));
         mp_seq_clear(self->items, self->len + 1, self->len + self->free, item_sz);
     }
     mp_binary_set_val_array(self->typecode, self->items, self->len++, arg);
@@ -321,7 +324,7 @@ STATIC mp_obj_t array_extend(mp_obj_t self_in, mp_obj_t arg_in) {
     // make sure we have enough room to extend
     // TODO: alloc policy; at the moment we go conservative
     if (self->free < len) {
-        self->items = m_realloc(self->items, (self->len + self->free) * sz, (self->len + len) * sz);
+        self->items = m_renew(byte, self->items, (self->len + self->free) * sz, (self->len + len) * sz);
         self->free = 0;
     } else {
         self->free -= len;
@@ -348,17 +351,48 @@ STATIC mp_obj_t array_subscr(mp_obj_t self_in, mp_obj_t index_in, mp_obj_t value
         if (0) {
 #if MICROPY_PY_BUILTINS_SLICE
         } else if (MP_OBJ_IS_TYPE(index_in, &mp_type_slice)) {
-            if (value != MP_OBJ_SENTINEL) {
-                // Only getting a slice is suported so far, not assignment
-                // TODO: confirmed that both bytearray and array.array support
-                // slice assignment (incl. of different size)
-                return MP_OBJ_NULL; // op not supported
-            }
             mp_bound_slice_t slice;
             if (!mp_seq_get_fast_slice_indexes(o->len, index_in, &slice)) {
                 nlr_raise(mp_obj_new_exception_msg(&mp_type_NotImplementedError,
                     "only slices with step=1 (aka None) are supported"));
             }
+            if (value != MP_OBJ_SENTINEL) {
+                #if MICROPY_PY_ARRAY_SLICE_ASSIGN
+                // Assign
+                if (!MP_OBJ_IS_TYPE(value, &mp_type_array) && !MP_OBJ_IS_TYPE(value, &mp_type_bytearray)) {
+                    mp_not_implemented("array required on right side");
+                }
+                mp_obj_array_t *src_slice = value;
+                int item_sz = mp_binary_get_size('@', o->typecode, NULL);
+                if (item_sz != mp_binary_get_size('@', src_slice->typecode, NULL)) {
+                    mp_not_implemented("arrays should be compatible");
+                }
+
+                // TODO: check src/dst compat
+                mp_int_t len_adj = src_slice->len - (slice.stop - slice.start);
+                if (len_adj > 0) {
+                    if (len_adj > o->free) {
+                        // TODO: alloc policy; at the moment we go conservative
+                        o->items = m_realloc(o->items, (o->len + o->free) * item_sz, (o->len + len_adj) * item_sz);
+                        o->free = 0;
+                    }
+                    mp_seq_replace_slice_grow_inplace(o->items, o->len,
+                        slice.start, slice.stop, src_slice->items, src_slice->len, len_adj, item_sz);
+                } else {
+                    mp_seq_replace_slice_no_grow(o->items, o->len,
+                        slice.start, slice.stop, src_slice->items, src_slice->len, item_sz);
+                    // Clear "freed" elements at the end of list
+                    // TODO: This is actually only needed for typecode=='O'
+                    mp_seq_clear(o->items, o->len + len_adj, o->len, item_sz);
+                    // TODO: alloc policy after shrinking
+                }
+                o->len += len_adj;
+                return mp_const_none;
+                #else
+                return MP_OBJ_NULL; // op not supported
+                #endif
+            }
+
             mp_obj_array_t *res;
             int sz = mp_binary_get_size('@', o->typecode & TYPECODE_MASK, NULL);
             assert(sz > 0);

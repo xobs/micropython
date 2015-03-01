@@ -131,21 +131,21 @@ void asm_x86_free(asm_x86_t *as, bool free_code) {
 }
 
 void asm_x86_start_pass(asm_x86_t *as, mp_uint_t pass) {
-    as->pass = pass;
-    as->code_offset = 0;
     if (pass == ASM_X86_PASS_COMPUTE) {
         // reset all labels
         memset(as->label_offsets, -1, as->max_num_labels * sizeof(mp_uint_t));
-    }
-}
-
-void asm_x86_end_pass(asm_x86_t *as) {
-    if (as->pass == ASM_X86_PASS_COMPUTE) {
-        MP_PLAT_ALLOC_EXEC(as->code_offset, (void**) &as->code_base, &as->code_size);
-        if(as->code_base == NULL) {
+    } else if (pass == ASM_X86_PASS_EMIT) {
+        MP_PLAT_ALLOC_EXEC(as->code_offset, (void**)&as->code_base, &as->code_size);
+        if (as->code_base == NULL) {
             assert(0);
         }
     }
+    as->pass = pass;
+    as->code_offset = 0;
+}
+
+void asm_x86_end_pass(asm_x86_t *as) {
+    (void)as;
 }
 
 // all functions must go through this one to emit bytes
@@ -399,7 +399,7 @@ void asm_x86_label_assign(asm_x86_t *as, mp_uint_t label) {
     assert(label < as->max_num_labels);
     if (as->pass < ASM_X86_PASS_EMIT) {
         // assign label offset
-        assert(as->label_offsets[label] == -1);
+        assert(as->label_offsets[label] == (mp_uint_t)-1);
         as->label_offsets[label] = as->code_offset;
     } else {
         // ensure label offset has not changed from PASS_COMPUTE to PASS_EMIT
@@ -408,7 +408,7 @@ void asm_x86_label_assign(asm_x86_t *as, mp_uint_t label) {
     }
 }
 
-STATIC mp_uint_t get_label_dest(asm_x86_t *as, int label) {
+STATIC mp_uint_t get_label_dest(asm_x86_t *as, mp_uint_t label) {
     assert(label < as->max_num_labels);
     return as->label_offsets[label];
 }
@@ -416,7 +416,7 @@ STATIC mp_uint_t get_label_dest(asm_x86_t *as, int label) {
 void asm_x86_jmp_label(asm_x86_t *as, mp_uint_t label) {
     mp_uint_t dest = get_label_dest(as, label);
     mp_int_t rel = dest - as->code_offset;
-    if (dest != -1 && rel < 0) {
+    if (dest != (mp_uint_t)-1 && rel < 0) {
         // is a backwards jump, so we know the size of the jump on the first pass
         // calculate rel assuming 8 bit relative jump
         rel -= 2;
@@ -438,7 +438,7 @@ void asm_x86_jmp_label(asm_x86_t *as, mp_uint_t label) {
 void asm_x86_jcc_label(asm_x86_t *as, mp_uint_t jcc_type, mp_uint_t label) {
     mp_uint_t dest = get_label_dest(as, label);
     mp_int_t rel = dest - as->code_offset;
-    if (dest != -1 && rel < 0) {
+    if (dest != (mp_uint_t)-1 && rel < 0) {
         // is a backwards jump, so we know the size of the jump on the first pass
         // calculate rel assuming 8 bit relative jump
         rel -= 2;
@@ -499,7 +499,7 @@ void asm_x86_mov_r32_to_arg(asm_x86_t *as, int src_r32, int dest_arg_num) {
 //  - numbered 0 through as->num_locals-1
 //  - EBP points above the last local
 //
-//                          | EPB
+//                          | EBP
 //                          v
 //  l0  l1  l2  ...  l(n-1)
 //  ^                ^

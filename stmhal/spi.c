@@ -63,7 +63,9 @@
 #if MICROPY_HW_ENABLE_SPI1
 SPI_HandleTypeDef SPIHandle1 = {.Instance = NULL};
 #endif
+#if MICROPY_HW_ENABLE_SPI2
 SPI_HandleTypeDef SPIHandle2 = {.Instance = NULL};
+#endif
 #if MICROPY_HW_ENABLE_SPI3
 SPI_HandleTypeDef SPIHandle3 = {.Instance = NULL};
 #endif
@@ -110,10 +112,12 @@ void SPI1_RX_DMA_IRQ_HANDLER(void) { HAL_DMA_IRQHandler(&spi1_rx_dma_handle); }
 void SPI1_TX_DMA_IRQ_HANDLER(void) { HAL_DMA_IRQHandler(&spi1_tx_dma_handle); }
 #endif
 
+#if MICROPY_HW_ENABLE_SPI2
 STATIC DMA_HandleTypeDef spi2_rx_dma_handle;
 STATIC DMA_HandleTypeDef spi2_tx_dma_handle;
 void SPI2_RX_DMA_IRQ_HANDLER(void) { HAL_DMA_IRQHandler(&spi2_rx_dma_handle); }
 void SPI2_TX_DMA_IRQ_HANDLER(void) { HAL_DMA_IRQHandler(&spi2_tx_dma_handle); }
+#endif
 
 #if MICROPY_HW_ENABLE_SPI3
 STATIC DMA_HandleTypeDef spi3_rx_dma_handle;
@@ -128,8 +132,10 @@ void spi_init0(void) {
     memset(&SPIHandle1, 0, sizeof(SPI_HandleTypeDef));
     SPIHandle1.Instance = SPI1;
 #endif
+#if MICROPY_HW_ENABLE_SPI2
     memset(&SPIHandle2, 0, sizeof(SPI_HandleTypeDef));
     SPIHandle2.Instance = SPI2;
+#endif
 #if MICROPY_HW_ENABLE_SPI3
     memset(&SPIHandle3, 0, sizeof(SPI_HandleTypeDef));
     SPIHandle3.Instance = SPI3;
@@ -169,6 +175,7 @@ void spi_init(SPI_HandleTypeDef *spi, bool enable_nss_pin) {
         rx_dma_irqn = SPI1_RX_DMA_IRQN;
         tx_dma_irqn = SPI1_TX_DMA_IRQN;
 #endif
+#if MICROPY_HW_ENABLE_SPI2
     } else if (spi->Instance == SPI2) {
         // Y-skin: Y5=PB12=SPI2_NSS, Y6=PB13=SPI2_SCK, Y7=PB14=SPI2_MISO, Y8=PB15=SPI2_MOSI
         pins[0] = &pin_B12;
@@ -187,6 +194,7 @@ void spi_init(SPI_HandleTypeDef *spi, bool enable_nss_pin) {
         tx_dma = &spi2_tx_dma_handle;
         rx_dma_irqn = SPI2_RX_DMA_IRQN;
         tx_dma_irqn = SPI2_TX_DMA_IRQN;
+#endif
 #if MICROPY_HW_ENABLE_SPI3
     } else if (spi->Instance == SPI3) {
         pins[0] = &pin_A4;
@@ -266,10 +274,12 @@ void spi_deinit(SPI_HandleTypeDef *spi) {
         __SPI1_RELEASE_RESET();
         __SPI1_CLK_DISABLE();
 #endif
+#if MICROPY_HW_ENABLE_SPI2
     } else if (spi->Instance == SPI2) {
         __SPI2_FORCE_RESET();
         __SPI2_RELEASE_RESET();
         __SPI2_CLK_DISABLE();
+#endif
 #if MICROPY_HW_ENABLE_SPI3
     } else if (spi->Instance == SPI3) {
         __SPI3_FORCE_RESET();
@@ -304,7 +314,11 @@ STATIC const pyb_spi_obj_t pyb_spi_obj[] = {
 #else
     {{&pyb_spi_type}, NULL},
 #endif
+#if MICROPY_HW_ENABLE_SPI2
     {{&pyb_spi_type}, &SPIHandle2},
+#else
+    {{&pyb_spi_type}, NULL},
+#endif
 #if MICROPY_HW_ENABLE_SPI3
     {{&pyb_spi_type}, &SPIHandle3},
 #else
@@ -551,15 +565,15 @@ STATIC mp_obj_t pyb_spi_recv(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_
     mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
     // get the buffer to receive into
-    mp_buffer_info_t bufinfo;
-    mp_obj_t o_ret = pyb_buf_get_for_recv(args[0].u_obj, &bufinfo);
+    vstr_t vstr;
+    mp_obj_t o_ret = pyb_buf_get_for_recv(args[0].u_obj, &vstr);
 
     // receive the data
     HAL_StatusTypeDef status;
     if (query_irq() == IRQ_STATE_DISABLED) {
-        status = HAL_SPI_Receive(self->spi, bufinfo.buf, bufinfo.len, args[1].u_int);
+        status = HAL_SPI_Receive(self->spi, (uint8_t*)vstr.buf, vstr.len, args[1].u_int);
     } else {
-        status = HAL_SPI_Receive_DMA(self->spi, bufinfo.buf, bufinfo.len);
+        status = HAL_SPI_Receive_DMA(self->spi, (uint8_t*)vstr.buf, vstr.len);
         if (status == HAL_OK) {
             status = spi_wait_dma_finished(self->spi, args[1].u_int);
         }
@@ -570,10 +584,10 @@ STATIC mp_obj_t pyb_spi_recv(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_
     }
 
     // return the received data
-    if (o_ret == MP_OBJ_NULL) {
-        return args[0].u_obj;
+    if (o_ret != MP_OBJ_NULL) {
+        return o_ret;
     } else {
-        return mp_obj_str_builder_end(o_ret);
+        return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
     }
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_recv_obj, 1, pyb_spi_recv);
@@ -607,13 +621,14 @@ STATIC mp_obj_t pyb_spi_send_recv(mp_uint_t n_args, const mp_obj_t *pos_args, mp
     mp_buffer_info_t bufinfo_send;
     uint8_t data_send[1];
     mp_buffer_info_t bufinfo_recv;
+    vstr_t vstr_recv;
     mp_obj_t o_ret;
 
     if (args[0].u_obj == args[1].u_obj) {
         // same object for send and receive, it must be a r/w buffer
         mp_get_buffer_raise(args[0].u_obj, &bufinfo_send, MP_BUFFER_RW);
         bufinfo_recv = bufinfo_send;
-        o_ret = MP_OBJ_NULL;
+        o_ret = args[0].u_obj;
     } else {
         // get the buffer to send from
         pyb_buf_get_for_send(args[0].u_obj, &bufinfo_send, data_send);
@@ -621,16 +636,17 @@ STATIC mp_obj_t pyb_spi_send_recv(mp_uint_t n_args, const mp_obj_t *pos_args, mp
         // get the buffer to receive into
         if (args[1].u_obj == MP_OBJ_NULL) {
             // only send argument given, so create a fresh buffer of the send length
-            bufinfo_recv.len = bufinfo_send.len;
-            bufinfo_recv.typecode = 'B';
-            o_ret = mp_obj_str_builder_start(&mp_type_bytes, bufinfo_recv.len, (byte**)&bufinfo_recv.buf);
+            vstr_init_len(&vstr_recv, bufinfo_send.len);
+            bufinfo_recv.len = vstr_recv.len;
+            bufinfo_recv.buf = vstr_recv.buf;
+            o_ret = MP_OBJ_NULL;
         } else {
             // recv argument given
             mp_get_buffer_raise(args[1].u_obj, &bufinfo_recv, MP_BUFFER_WRITE);
             if (bufinfo_recv.len != bufinfo_send.len) {
                 nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "recv must be same length as send"));
             }
-            o_ret = MP_OBJ_NULL;
+            o_ret = args[1].u_obj;
         }
     }
 
@@ -650,10 +666,10 @@ STATIC mp_obj_t pyb_spi_send_recv(mp_uint_t n_args, const mp_obj_t *pos_args, mp
     }
 
     // return the received data
-    if (o_ret == MP_OBJ_NULL) {
-        return args[1].u_obj;
+    if (o_ret != MP_OBJ_NULL) {
+        return o_ret;
     } else {
-        return mp_obj_str_builder_end(o_ret);
+        return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr_recv);
     }
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_send_recv_obj, 1, pyb_spi_send_recv);

@@ -268,6 +268,10 @@ STATIC void emit_write_bytecode_byte_signed_label(emit_t* emit, byte b1, mp_uint
 }
 
 STATIC void emit_bc_set_native_type(emit_t *emit, mp_uint_t op, mp_uint_t arg1, qstr arg2) {
+    (void)emit;
+    (void)op;
+    (void)arg1;
+    (void)arg2;
 }
 
 STATIC void emit_bc_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scope) {
@@ -424,7 +428,7 @@ STATIC void emit_bc_label_assign(emit_t *emit, mp_uint_t l) {
     assert(l < emit->max_num_labels);
     if (emit->pass < MP_PASS_EMIT) {
         // assign label offset
-        assert(emit->label_offsets[l] == -1);
+        assert(emit->label_offsets[l] == (mp_uint_t)-1);
         emit->label_offsets[l] = emit->bytecode_offset;
     } else {
         // ensure label offset has not changed from MP_PASS_CODE_SIZE to MP_PASS_EMIT
@@ -454,8 +458,9 @@ STATIC void emit_bc_load_const_tok(emit_t *emit, mp_token_kind_t tok) {
         case MP_TOKEN_KW_FALSE: emit_write_bytecode_byte(emit, MP_BC_LOAD_CONST_FALSE); break;
         case MP_TOKEN_KW_NONE: emit_write_bytecode_byte(emit, MP_BC_LOAD_CONST_NONE); break;
         case MP_TOKEN_KW_TRUE: emit_write_bytecode_byte(emit, MP_BC_LOAD_CONST_TRUE); break;
+        no_other_choice:
         case MP_TOKEN_ELLIPSIS: emit_write_bytecode_byte(emit, MP_BC_LOAD_CONST_ELLIPSIS); break;
-        default: assert(0);
+        default: assert(0); goto no_other_choice; // to help flow control analysis
     }
 }
 
@@ -468,16 +473,6 @@ STATIC void emit_bc_load_const_small_int(emit_t *emit, mp_int_t arg) {
     }
 }
 
-STATIC void emit_bc_load_const_int(emit_t *emit, qstr qst) {
-    emit_bc_pre(emit, 1);
-    emit_write_bytecode_byte_qstr(emit, MP_BC_LOAD_CONST_INT, qst);
-}
-
-STATIC void emit_bc_load_const_dec(emit_t *emit, qstr qst) {
-    emit_bc_pre(emit, 1);
-    emit_write_bytecode_byte_qstr(emit, MP_BC_LOAD_CONST_DEC, qst);
-}
-
 STATIC void emit_bc_load_const_str(emit_t *emit, qstr qst, bool bytes) {
     emit_bc_pre(emit, 1);
     if (bytes) {
@@ -487,12 +482,18 @@ STATIC void emit_bc_load_const_str(emit_t *emit, qstr qst, bool bytes) {
     }
 }
 
+STATIC void emit_bc_load_const_obj(emit_t *emit, void *obj) {
+    emit_bc_pre(emit, 1);
+    emit_write_bytecode_byte_ptr(emit, MP_BC_LOAD_CONST_OBJ, obj);
+}
+
 STATIC void emit_bc_load_null(emit_t *emit) {
     emit_bc_pre(emit, 1);
     emit_write_bytecode_byte(emit, MP_BC_LOAD_NULL);
 };
 
-STATIC void emit_bc_load_fast(emit_t *emit, qstr qst, mp_uint_t id_flags, mp_uint_t local_num) {
+STATIC void emit_bc_load_fast(emit_t *emit, qstr qst, mp_uint_t local_num) {
+    (void)qst;
     assert(local_num >= 0);
     emit_bc_pre(emit, 1);
     if (local_num <= 15) {
@@ -503,11 +504,13 @@ STATIC void emit_bc_load_fast(emit_t *emit, qstr qst, mp_uint_t id_flags, mp_uin
 }
 
 STATIC void emit_bc_load_deref(emit_t *emit, qstr qst, mp_uint_t local_num) {
+    (void)qst;
     emit_bc_pre(emit, 1);
     emit_write_bytecode_byte_uint(emit, MP_BC_LOAD_DEREF, local_num);
 }
 
 STATIC void emit_bc_load_name(emit_t *emit, qstr qst) {
+    (void)qst;
     emit_bc_pre(emit, 1);
     emit_write_bytecode_byte_qstr(emit, MP_BC_LOAD_NAME, qst);
     if (MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE) {
@@ -516,6 +519,7 @@ STATIC void emit_bc_load_name(emit_t *emit, qstr qst) {
 }
 
 STATIC void emit_bc_load_global(emit_t *emit, qstr qst) {
+    (void)qst;
     emit_bc_pre(emit, 1);
     emit_write_bytecode_byte_qstr(emit, MP_BC_LOAD_GLOBAL, qst);
     if (MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE) {
@@ -547,6 +551,7 @@ STATIC void emit_bc_load_subscr(emit_t *emit) {
 }
 
 STATIC void emit_bc_store_fast(emit_t *emit, qstr qst, mp_uint_t local_num) {
+    (void)qst;
     assert(local_num >= 0);
     emit_bc_pre(emit, -1);
     if (local_num <= 15) {
@@ -557,6 +562,7 @@ STATIC void emit_bc_store_fast(emit_t *emit, qstr qst, mp_uint_t local_num) {
 }
 
 STATIC void emit_bc_store_deref(emit_t *emit, qstr qst, mp_uint_t local_num) {
+    (void)qst;
     emit_bc_pre(emit, -1);
     emit_write_bytecode_byte_uint(emit, MP_BC_STORE_DEREF, local_num);
 }
@@ -585,10 +591,12 @@ STATIC void emit_bc_store_subscr(emit_t *emit) {
 }
 
 STATIC void emit_bc_delete_fast(emit_t *emit, qstr qst, mp_uint_t local_num) {
+    (void)qst;
     emit_write_bytecode_byte_uint(emit, MP_BC_DELETE_FAST, local_num);
 }
 
 STATIC void emit_bc_delete_deref(emit_t *emit, qstr qst, mp_uint_t local_num) {
+    (void)qst;
     emit_write_bytecode_byte_uint(emit, MP_BC_DELETE_DEREF, local_num);
 }
 
@@ -644,24 +652,22 @@ STATIC void emit_bc_jump(emit_t *emit, mp_uint_t label) {
     emit_write_bytecode_byte_signed_label(emit, MP_BC_JUMP, label);
 }
 
-STATIC void emit_bc_pop_jump_if_true(emit_t *emit, mp_uint_t label) {
+STATIC void emit_bc_pop_jump_if(emit_t *emit, bool cond, mp_uint_t label) {
     emit_bc_pre(emit, -1);
-    emit_write_bytecode_byte_signed_label(emit, MP_BC_POP_JUMP_IF_TRUE, label);
+    if (cond) {
+        emit_write_bytecode_byte_signed_label(emit, MP_BC_POP_JUMP_IF_TRUE, label);
+    } else {
+        emit_write_bytecode_byte_signed_label(emit, MP_BC_POP_JUMP_IF_FALSE, label);
+    }
 }
 
-STATIC void emit_bc_pop_jump_if_false(emit_t *emit, mp_uint_t label) {
+STATIC void emit_bc_jump_if_or_pop(emit_t *emit, bool cond, mp_uint_t label) {
     emit_bc_pre(emit, -1);
-    emit_write_bytecode_byte_signed_label(emit, MP_BC_POP_JUMP_IF_FALSE, label);
-}
-
-STATIC void emit_bc_jump_if_true_or_pop(emit_t *emit, mp_uint_t label) {
-    emit_bc_pre(emit, -1);
-    emit_write_bytecode_byte_signed_label(emit, MP_BC_JUMP_IF_TRUE_OR_POP, label);
-}
-
-STATIC void emit_bc_jump_if_false_or_pop(emit_t *emit, mp_uint_t label) {
-    emit_bc_pre(emit, -1);
-    emit_write_bytecode_byte_signed_label(emit, MP_BC_JUMP_IF_FALSE_OR_POP, label);
+    if (cond) {
+        emit_write_bytecode_byte_signed_label(emit, MP_BC_JUMP_IF_TRUE_OR_POP, label);
+    } else {
+        emit_write_bytecode_byte_signed_label(emit, MP_BC_JUMP_IF_FALSE_OR_POP, label);
+    }
 }
 
 STATIC void emit_bc_unwind_jump(emit_t *emit, mp_uint_t label, mp_uint_t except_depth) {
@@ -914,9 +920,8 @@ const emit_method_table_t emit_bc_method_table = {
     emit_bc_import_star,
     emit_bc_load_const_tok,
     emit_bc_load_const_small_int,
-    emit_bc_load_const_int,
-    emit_bc_load_const_dec,
     emit_bc_load_const_str,
+    emit_bc_load_const_obj,
     emit_bc_load_null,
     emit_bc_load_fast,
     emit_bc_load_deref,
@@ -944,10 +949,8 @@ const emit_method_table_t emit_bc_method_table = {
     emit_bc_rot_two,
     emit_bc_rot_three,
     emit_bc_jump,
-    emit_bc_pop_jump_if_true,
-    emit_bc_pop_jump_if_false,
-    emit_bc_jump_if_true_or_pop,
-    emit_bc_jump_if_false_or_pop,
+    emit_bc_pop_jump_if,
+    emit_bc_jump_if_or_pop,
     emit_bc_unwind_jump,
     emit_bc_unwind_jump,
     emit_bc_setup_with,

@@ -55,6 +55,7 @@ STATIC int mod_uzlib_grow_buf(TINF_DATA *d, unsigned alloc_req) {
 }
 
 STATIC mp_obj_t mod_uzlib_decompress(mp_uint_t n_args, const mp_obj_t *args) {
+    (void)n_args;
     mp_obj_t data = args[0];
     mp_buffer_info_t bufinfo;
     mp_get_buffer_raise(data, &bufinfo, MP_BUFFER_READ);
@@ -62,17 +63,26 @@ STATIC mp_obj_t mod_uzlib_decompress(mp_uint_t n_args, const mp_obj_t *args) {
     TINF_DATA *decomp = m_new_obj(TINF_DATA);
     DEBUG_printf("sizeof(TINF_DATA)=" UINT_FMT "\n", sizeof(*decomp));
 
-    decomp->destStart = m_new(byte, bufinfo.len);
-    decomp->destSize = bufinfo.len;
+    decomp->destSize = (bufinfo.len + 15) & ~15;
+    decomp->destStart = m_new(byte, decomp->destSize);
+    DEBUG_printf("uzlib: Initial out buffer: " UINT_FMT " bytes\n", decomp->destSize);
     decomp->destGrow = mod_uzlib_grow_buf;
     decomp->source = bufinfo.buf;
 
-    int st = tinf_zlib_uncompress_dyn(decomp, bufinfo.len);
+    int st;
+    if (n_args > 1 && MP_OBJ_SMALL_INT_VALUE(args[1]) < 0) {
+        st = tinf_uncompress_dyn(decomp);
+    } else {
+        st = tinf_zlib_uncompress_dyn(decomp, bufinfo.len);
+    }
     if (st != 0) {
         nlr_raise(mp_obj_new_exception_arg1(&mp_type_ValueError, MP_OBJ_NEW_SMALL_INT(st)));
     }
 
-    mp_obj_t res = mp_obj_new_bytearray_by_ref(decomp->dest - decomp->destStart, decomp->destStart);
+    mp_uint_t final_sz = decomp->dest - decomp->destStart;
+    DEBUG_printf("uzlib: Resizing from " UINT_FMT " to final size: " UINT_FMT " bytes\n", decomp->destSize, final_sz);
+    decomp->destStart = (byte*)m_renew(byte, decomp->destStart, decomp->destSize, final_sz);
+    mp_obj_t res = mp_obj_new_bytearray_by_ref(final_sz, decomp->destStart);
     m_del_obj(TINF_DATA, decomp);
     return res;
 }

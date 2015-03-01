@@ -42,6 +42,7 @@ void emit_pass1_free(emit_t *emit) {
 }
 
 STATIC void emit_pass1_dummy(emit_t *emit) {
+    (void)emit;
 }
 
 STATIC void emit_pass1_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scope) {
@@ -50,9 +51,11 @@ STATIC void emit_pass1_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scope
 }
 
 STATIC void emit_pass1_end_pass(emit_t *emit) {
+    (void)emit;
 }
 
 STATIC bool emit_pass1_last_emit_was_return_value(emit_t *emit) {
+    (void)emit;
     return false;
 }
 
@@ -130,9 +133,6 @@ const emit_method_table_t emit_pass1_method_table = {
     emit_pass1_store_id,
     emit_pass1_delete_id,
 
-    (void*)emit_pass1_dummy,
-    (void*)emit_pass1_dummy,
-    (void*)emit_pass1_dummy,
     (void*)emit_pass1_dummy,
     (void*)emit_pass1_dummy,
     (void*)emit_pass1_dummy,

@@ -12,12 +12,13 @@
 #define MICROPY_STACK_CHECK         (1)
 #define MICROPY_HELPER_REPL         (0)
 #define MICROPY_HELPER_LEXER_UNIX   (0)
-#define MICROPY_ENABLE_SOURCE_LINE  (0)
+#define MICROPY_ENABLE_SOURCE_LINE  (1)
 #define MICROPY_LONGINT_IMPL        (MICROPY_LONGINT_IMPL_MPZ)
 #define MICROPY_FLOAT_IMPL          (MICROPY_FLOAT_IMPL_NONE)
 #define MICROPY_PY_BUILTINS_FROZENSET (1)
 #define MICROPY_PY_BUILTINS_MEMORYVIEW (1)
 #define MICROPY_PY_IO               (0)
+#define MICROPY_PY_SYS_EXIT         (1)
 
 // type definitions for the specific machine
 

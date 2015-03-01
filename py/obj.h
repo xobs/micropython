@@ -46,7 +46,7 @@ typedef machine_const_ptr_t mp_const_obj_t;
 
 struct _mp_obj_type_t;
 struct _mp_obj_base_t {
-    const struct _mp_obj_type_t *type;
+    const struct _mp_obj_type_t *type MICROPY_OBJ_BASE_ALIGNMENT;
 };
 typedef struct _mp_obj_base_t mp_obj_base_t;
 
@@ -61,7 +61,7 @@ typedef struct _mp_obj_base_t mp_obj_base_t;
 // For debugging purposes they are all different.  For non-debug mode, we alias
 // as many as we can to MP_OBJ_NULL because it's cheaper to load/compare 0.
 
-#if NDEBUG
+#ifdef NDEBUG
 #define MP_OBJ_NULL             ((mp_obj_t)0)
 #define MP_OBJ_STOP_ITERATION   ((mp_obj_t)0)
 #define MP_OBJ_SENTINEL         ((mp_obj_t)4)
@@ -86,7 +86,7 @@ typedef struct _mp_obj_base_t mp_obj_base_t;
 #define MP_OBJ_SMALL_INT_VALUE(o) (((mp_int_t)(o)) >> 1)
 #define MP_OBJ_NEW_SMALL_INT(small_int) ((mp_obj_t)((((mp_int_t)(small_int)) << 1) | 1))
 
-#define MP_OBJ_QSTR_VALUE(o) (((mp_int_t)(o)) >> 2)
+#define MP_OBJ_QSTR_VALUE(o) (((mp_uint_t)(o)) >> 2)
 #define MP_OBJ_NEW_QSTR(qst) ((mp_obj_t)((((mp_uint_t)(qst)) << 2) | 2))
 
 // These macros are used to declare and define constant function objects
@@ -247,7 +247,7 @@ bool mp_get_buffer(mp_obj_t obj, mp_buffer_info_t *bufinfo, mp_uint_t flags);
 void mp_get_buffer_raise(mp_obj_t obj, mp_buffer_info_t *bufinfo, mp_uint_t flags);
 
 // Stream protocol
-#define MP_STREAM_ERROR (-1)
+#define MP_STREAM_ERROR ((mp_uint_t)-1)
 typedef struct _mp_stream_p_t {
     // On error, functions should return MP_STREAM_ERROR and fill in *errcode (values
     // are implementation-dependent, but will be exposed to user, e.g. via exception).
@@ -285,7 +285,7 @@ struct _mp_obj_type_t {
                                     // value=MP_OBJ_NULL means delete, value=MP_OBJ_SENTINEL means load, else store
                                     // can return MP_OBJ_NULL if op not supported
 
-    mp_fun_1_t getiter;
+    mp_fun_1_t getiter;             // corresponds to __iter__ special method
     mp_fun_1_t iternext; // may return MP_OBJ_STOP_ITERATION as an optimisation instead of raising StopIteration() (with no args)
 
     mp_buffer_p_t buffer_p;
@@ -369,6 +369,7 @@ extern const mp_obj_type_t mp_type_StopIteration;
 extern const mp_obj_type_t mp_type_SyntaxError;
 extern const mp_obj_type_t mp_type_SystemExit;
 extern const mp_obj_type_t mp_type_TypeError;
+extern const mp_obj_type_t mp_type_UnicodeError;
 extern const mp_obj_type_t mp_type_ValueError;
 extern const mp_obj_type_t mp_type_ZeroDivisionError;
 
@@ -400,6 +401,7 @@ mp_obj_t mp_obj_new_int_from_str_len(const char **str, mp_uint_t len, bool neg, 
 mp_obj_t mp_obj_new_int_from_ll(long long val); // this must return a multi-precision integer object (or raise an overflow exception)
 mp_obj_t mp_obj_new_int_from_ull(unsigned long long val); // this must return a multi-precision integer object (or raise an overflow exception)
 mp_obj_t mp_obj_new_str(const char* data, mp_uint_t len, bool make_qstr_if_not_already);
+mp_obj_t mp_obj_new_str_from_vstr(const mp_obj_type_t *type, vstr_t *vstr);
 mp_obj_t mp_obj_new_bytes(const byte* data, mp_uint_t len);
 mp_obj_t mp_obj_new_bytearray(mp_uint_t n, void *items);
 mp_obj_t mp_obj_new_bytearray_by_ref(mp_uint_t n, void *items);
@@ -499,9 +501,6 @@ mp_obj_t mp_alloc_emergency_exception_buf(mp_obj_t size_in);
 void mp_init_emergency_exception_buf(void);
 
 // str
-mp_obj_t mp_obj_str_builder_start(const mp_obj_type_t *type, mp_uint_t len, byte **data);
-mp_obj_t mp_obj_str_builder_end(mp_obj_t o_in);
-mp_obj_t mp_obj_str_builder_end_with_len(mp_obj_t o_in, mp_uint_t len);
 bool mp_obj_str_equal(mp_obj_t s1, mp_obj_t s2);
 mp_uint_t mp_obj_str_get_hash(mp_obj_t self_in);
 mp_uint_t mp_obj_str_get_len(mp_obj_t self_in);
@@ -535,6 +534,7 @@ mp_int_t mp_obj_tuple_hash(mp_obj_t self_in);
 struct _mp_obj_list_t;
 void mp_obj_list_init(struct _mp_obj_list_t *o, mp_uint_t n);
 mp_obj_t mp_obj_list_append(mp_obj_t self_in, mp_obj_t arg);
+mp_obj_t mp_obj_list_remove(mp_obj_t self_in, mp_obj_t value);
 void mp_obj_list_get(mp_obj_t self_in, mp_uint_t *len, mp_obj_t **items);
 void mp_obj_list_set_len(mp_obj_t self_in, mp_uint_t len);
 void mp_obj_list_store(mp_obj_t self_in, mp_obj_t index, mp_obj_t value);
@@ -616,15 +616,15 @@ mp_obj_t mp_seq_count_obj(const mp_obj_t *items, mp_uint_t len, mp_obj_t value);
 mp_obj_t mp_seq_extract_slice(mp_uint_t len, const mp_obj_t *seq, mp_bound_slice_t *indexes);
 // Helper to clear stale pointers from allocated, but unused memory, to preclude GC problems
 #define mp_seq_clear(start, len, alloc_len, item_sz) memset((byte*)(start) + (len) * (item_sz), 0, ((alloc_len) - (len)) * (item_sz))
-#define mp_seq_replace_slice_no_grow(dest, dest_len, beg, end, slice, slice_len, item_t) \
-    /*printf("memcpy(%p, %p, %d)\n", dest + beg, slice, slice_len * sizeof(item_t));*/ \
-    memcpy(dest + beg, slice, slice_len * sizeof(item_t)); \
-    /*printf("memmove(%p, %p, %d)\n", dest + (beg + slice_len), dest + end, (dest_len - end) * sizeof(item_t));*/ \
-    memmove(dest + (beg + slice_len), dest + end, (dest_len - end) * sizeof(item_t));
+#define mp_seq_replace_slice_no_grow(dest, dest_len, beg, end, slice, slice_len, item_sz) \
+    /*printf("memcpy(%p, %p, %d)\n", dest + beg, slice, slice_len * (item_sz));*/ \
+    memcpy(((char*)dest) + (beg) * (item_sz), slice, slice_len * (item_sz)); \
+    /*printf("memmove(%p, %p, %d)\n", dest + (beg + slice_len), dest + end, (dest_len - end) * (item_sz));*/ \
+    memmove(((char*)dest) + (beg + slice_len) * (item_sz), ((char*)dest) + (end) * (item_sz), (dest_len - end) * (item_sz));
 
-#define mp_seq_replace_slice_grow_inplace(dest, dest_len, beg, end, slice, slice_len, len_adj, item_t) \
-    /*printf("memmove(%p, %p, %d)\n", dest + beg + len_adj, dest + beg, (dest_len - beg) * sizeof(item_t));*/ \
-    memmove(dest + beg + len_adj, dest + beg, (dest_len - beg) * sizeof(item_t)); \
-    memcpy(dest + beg, slice, slice_len * sizeof(item_t));
+#define mp_seq_replace_slice_grow_inplace(dest, dest_len, beg, end, slice, slice_len, len_adj, item_sz) \
+    /*printf("memmove(%p, %p, %d)\n", dest + beg + len_adj, dest + beg, (dest_len - beg) * (item_sz));*/ \
+    memmove(((char*)dest) + (beg + len_adj) * (item_sz), ((char*)dest) + (beg) * (item_sz), (dest_len - beg) * (item_sz)); \
+    memcpy(((char*)dest) + (beg) * (item_sz), slice, slice_len * (item_sz));
 
 #endif // __MICROPY_INCLUDED_PY_OBJ_H__

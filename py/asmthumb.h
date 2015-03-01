@@ -84,6 +84,7 @@ void asm_thumb_data(asm_thumb_t* as, uint bytesize, uint val);
 // argument order follows ARM, in general dest is first
 // note there is a difference between movw and mov.w, and many others!
 
+#define ASM_THUMB_OP_IT (0xbf00)
 #define ASM_THUMB_OP_ITE_EQ (0xbf0c)
 #define ASM_THUMB_OP_ITE_CS (0xbf2c)
 #define ASM_THUMB_OP_ITE_MI (0xbf4c)
@@ -100,6 +101,9 @@ void asm_thumb_data(asm_thumb_t* as, uint bytesize, uint val);
 void asm_thumb_op16(asm_thumb_t *as, uint op);
 void asm_thumb_op32(asm_thumb_t *as, uint op1, uint op2);
 
+static inline void asm_thumb_it_cc(asm_thumb_t *as, uint cc, uint mask)
+    { asm_thumb_op16(as, ASM_THUMB_OP_IT | (cc << 4) | mask); }
+
 // FORMAT 2: add/subtract
 
 #define ASM_THUMB_FORMAT_2_ADD (0x1800)
@@ -107,7 +111,14 @@ void asm_thumb_op32(asm_thumb_t *as, uint op1, uint op2);
 #define ASM_THUMB_FORMAT_2_REG_OPERAND (0x0000)
 #define ASM_THUMB_FORMAT_2_IMM_OPERAND (0x0400)
 
-void asm_thumb_format_2(asm_thumb_t *as, uint op, uint rlo_dest, uint rlo_src, int src_b);
+#define ASM_THUMB_FORMAT_2_ENCODE(op, rlo_dest, rlo_src, src_b) \
+    ((op) | ((src_b) << 6) | ((rlo_src) << 3) | (rlo_dest))
+
+static inline void asm_thumb_format_2(asm_thumb_t *as, uint op, uint rlo_dest, uint rlo_src, int src_b) {
+    assert(rlo_dest < ASM_THUMB_REG_R8);
+    assert(rlo_src < ASM_THUMB_REG_R8);
+    asm_thumb_op16(as, ASM_THUMB_FORMAT_2_ENCODE(op, rlo_dest, rlo_src, src_b));
+}
 
 static inline void asm_thumb_add_rlo_rlo_rlo(asm_thumb_t *as, uint rlo_dest, uint rlo_src_a, uint rlo_src_b)
     { asm_thumb_format_2(as, ASM_THUMB_FORMAT_2_ADD | ASM_THUMB_FORMAT_2_REG_OPERAND, rlo_dest, rlo_src_a, rlo_src_b); }
@@ -126,7 +137,12 @@ static inline void asm_thumb_sub_rlo_rlo_i3(asm_thumb_t *as, uint rlo_dest, uint
 #define ASM_THUMB_FORMAT_3_ADD (0x3000)
 #define ASM_THUMB_FORMAT_3_SUB (0x3800)
 
-void asm_thumb_format_3(asm_thumb_t *as, uint op, uint rlo, int i8);
+#define ASM_THUMB_FORMAT_3_ENCODE(op, rlo, i8) ((op) | ((rlo) << 8) | (i8))
+
+static inline void asm_thumb_format_3(asm_thumb_t *as, uint op, uint rlo, int i8) {
+    assert(rlo < ASM_THUMB_REG_R8);
+    asm_thumb_op16(as, ASM_THUMB_FORMAT_3_ENCODE(op, rlo, i8));
+}
 
 static inline void asm_thumb_mov_rlo_i8(asm_thumb_t *as, uint rlo, int i8) { asm_thumb_format_3(as, ASM_THUMB_FORMAT_3_MOV, rlo, i8); }
 static inline void asm_thumb_cmp_rlo_i8(asm_thumb_t *as, uint rlo, int i8) { asm_thumb_format_3(as, ASM_THUMB_FORMAT_3_CMP, rlo, i8); }
@@ -171,7 +187,11 @@ static inline void asm_thumb_cmp_rlo_rlo(asm_thumb_t *as, uint rlo_dest, uint rl
 #define ASM_THUMB_FORMAT_10_STRH (0x8000)
 #define ASM_THUMB_FORMAT_10_LDRH (0x8800)
 
-void asm_thumb_format_9_10(asm_thumb_t *as, uint op, uint rlo_dest, uint rlo_base, uint offset);
+#define ASM_THUMB_FORMAT_9_10_ENCODE(op, rlo_dest, rlo_base, offset) \
+    ((op) | (((offset) << 6) & 0x07c0) | ((rlo_base) << 3) | (rlo_dest))
+
+static inline void asm_thumb_format_9_10(asm_thumb_t *as, uint op, uint rlo_dest, uint rlo_base, uint offset)
+    { asm_thumb_op16(as, ASM_THUMB_FORMAT_9_10_ENCODE(op, rlo_dest, rlo_base, offset)); }
 
 static inline void asm_thumb_str_rlo_rlo_i5(asm_thumb_t *as, uint rlo_src, uint rlo_base, uint word_offset)
     { asm_thumb_format_9_10(as, ASM_THUMB_FORMAT_9_STR | ASM_THUMB_FORMAT_9_WORD_TRANSFER, rlo_src, rlo_base, word_offset); }
@@ -188,11 +208,16 @@ static inline void asm_thumb_ldrh_rlo_rlo_i5(asm_thumb_t *as, uint rlo_dest, uin
 
 // TODO convert these to above format style
 
+#define ASM_THUMB_OP_MOVW (0xf240)
+#define ASM_THUMB_OP_MOVT (0xf2c0)
+
 void asm_thumb_mov_reg_reg(asm_thumb_t *as, uint reg_dest, uint reg_src);
-void asm_thumb_movw_reg_i16(asm_thumb_t *as, uint reg_dest, int i16_src);
-void asm_thumb_movt_reg_i16(asm_thumb_t *as, uint reg_dest, int i16_src);
-void asm_thumb_b_n(asm_thumb_t *as, uint label);
-void asm_thumb_bcc_n(asm_thumb_t *as, int cond, uint label);
+void asm_thumb_mov_reg_i16(asm_thumb_t *as, uint mov_op, uint reg_dest, int i16_src);
+
+// these return true if the destination is in range, false otherwise
+bool asm_thumb_b_n_label(asm_thumb_t *as, uint label);
+bool asm_thumb_bcc_n_label(asm_thumb_t *as, int cond, uint label);
+bool asm_thumb_bl_label(asm_thumb_t *as, uint label);
 
 void asm_thumb_mov_reg_i32(asm_thumb_t *as, uint reg_dest, mp_uint_t i32_src); // convenience
 void asm_thumb_mov_reg_i32_optimised(asm_thumb_t *as, uint reg_dest, int i32_src); // convenience
@@ -201,8 +226,8 @@ void asm_thumb_mov_local_reg(asm_thumb_t *as, int local_num_dest, uint rlo_src);
 void asm_thumb_mov_reg_local(asm_thumb_t *as, uint rlo_dest, int local_num); // convenience
 void asm_thumb_mov_reg_local_addr(asm_thumb_t *as, uint rlo_dest, int local_num); // convenience
 
-void asm_thumb_b_label(asm_thumb_t *as, uint label); // convenience ?
+void asm_thumb_b_label(asm_thumb_t *as, uint label); // convenience: picks narrow or wide branch
 void asm_thumb_bcc_label(asm_thumb_t *as, int cc, uint label); // convenience: picks narrow or wide branch
-void asm_thumb_bl_ind(asm_thumb_t *as, void *fun_ptr, uint fun_id, uint reg_temp); // convenience ?
+void asm_thumb_bl_ind(asm_thumb_t *as, void *fun_ptr, uint fun_id, uint reg_temp); // convenience
 
 #endif // __MICROPY_INCLUDED_PY_ASMTHUMB_H__

@@ -42,6 +42,7 @@
 
 // This dispatcher function is expected to be independent of the implementation of long int
 STATIC mp_obj_t mp_obj_int_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *args) {
+    (void)type_in;
     mp_arg_check_num(n_args, n_kw, 0, 2, false);
 
     switch (n_args) {
@@ -56,7 +57,7 @@ STATIC mp_obj_t mp_obj_int_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_
                 // a string, parse it
                 mp_uint_t l;
                 const char *s = mp_obj_str_get_data(args[0], &l);
-                return mp_parse_num_integer(s, l, 0);
+                return mp_parse_num_integer(s, l, 0, NULL);
 #if MICROPY_PY_BUILTINS_FLOAT
             } else if (MP_OBJ_IS_TYPE(args[0], &mp_type_float)) {
                 return mp_obj_new_int_from_float(mp_obj_float_get(args[0]));
@@ -72,12 +73,59 @@ STATIC mp_obj_t mp_obj_int_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_
             // TODO proper error checking of argument types
             mp_uint_t l;
             const char *s = mp_obj_str_get_data(args[0], &l);
-            return mp_parse_num_integer(s, l, mp_obj_get_int(args[1]));
+            return mp_parse_num_integer(s, l, mp_obj_get_int(args[1]), NULL);
         }
     }
 }
 
+#if MICROPY_PY_BUILTINS_FLOAT
+mp_fp_as_int_class_t mp_classify_fp_as_int(mp_float_t val) {
+    union {
+        mp_float_t f;
+#if MICROPY_FLOAT_IMPL == MICROPY_FLOAT_IMPL_FLOAT
+        uint32_t i;
+#elif MICROPY_FLOAT_IMPL == MICROPY_FLOAT_IMPL_DOUBLE
+        uint32_t i[2];
+#endif
+    } u = {val};
+
+    uint32_t e;
+#if MICROPY_FLOAT_IMPL == MICROPY_FLOAT_IMPL_FLOAT
+    e = u.i;
+#elif MICROPY_FLOAT_IMPL == MICROPY_FLOAT_IMPL_DOUBLE
+    e = u.i[MP_ENDIANNESS_LITTLE];
+#endif
+#define MP_FLOAT_SIGN_SHIFT_I32 ((MP_FLOAT_FRAC_BITS + MP_FLOAT_EXP_BITS) % 32)
+#define MP_FLOAT_EXP_SHIFT_I32 (MP_FLOAT_FRAC_BITS % 32)
+
+    if (e & (1 << MP_FLOAT_SIGN_SHIFT_I32)) {
+#if MICROPY_FLOAT_IMPL == MICROPY_FLOAT_IMPL_DOUBLE
+        e |= u.i[MP_ENDIANNESS_BIG] != 0;
+#endif
+        e += ((1 << MP_FLOAT_EXP_BITS) - 1) << MP_FLOAT_EXP_SHIFT_I32;
+    } else {
+        e &= ~((1 << MP_FLOAT_EXP_SHIFT_I32) - 1);
+    }
+    if (e <= ((BITS_PER_WORD + MP_FLOAT_EXP_BIAS - 3) << MP_FLOAT_EXP_SHIFT_I32)) {
+        return MP_FP_CLASS_FIT_SMALLINT;
+    }
+#if MICROPY_LONGINT_IMPL == MICROPY_LONGINT_IMPL_LONGLONG
+    if (e <= (((sizeof(long long) * BITS_PER_BYTE) + MP_FLOAT_EXP_BIAS - 2) << MP_FLOAT_EXP_SHIFT_I32)) {
+        return MP_FP_CLASS_FIT_LONGINT;
+    }
+#endif
+#if MICROPY_LONGINT_IMPL == MICROPY_LONGINT_IMPL_MPZ
+    return MP_FP_CLASS_FIT_LONGINT;
+#else
+    return MP_FP_CLASS_OVERFLOW;
+#endif
+}
+#undef MP_FLOAT_SIGN_SHIFT_I32
+#undef MP_FLOAT_EXP_SHIFT_I32
+#endif
+
 void mp_obj_int_print(void (*print)(void *env, const char *fmt, ...), void *env, mp_obj_t self_in, mp_print_kind_t kind) {
+    (void)kind;
     // The size of this buffer is rather arbitrary. If it's not large
     // enough, a dynamic one will be allocated.
     char stack_buf[sizeof(mp_int_t) * 4];
@@ -89,7 +137,7 @@ void mp_obj_int_print(void (*print)(void *env, const char *fmt, ...), void *env,
     print(env, "%s", str);
 
     if (buf != stack_buf) {
-        m_free(buf, buf_size);
+        m_del(char, buf, buf_size);
     }
 }
 
@@ -258,9 +306,19 @@ mp_obj_t mp_obj_new_int_from_uint(mp_uint_t value) {
 
 #if MICROPY_PY_BUILTINS_FLOAT
 mp_obj_t mp_obj_new_int_from_float(mp_float_t val) {
-    // TODO raise an exception if the int won't fit
-    mp_int_t i = MICROPY_FLOAT_C_FUN(trunc)(val);
-    return mp_obj_new_int(i);
+    int cl = fpclassify(val);
+    if (cl == FP_INFINITE) {
+        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_OverflowError, "can't convert inf to int"));
+    } else if (cl == FP_NAN) {
+        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "can't convert NaN to int"));
+    } else {
+        mp_fp_as_int_class_t icl = mp_classify_fp_as_int(val);
+        if (icl == MP_FP_CLASS_FIT_SMALLINT) {
+            return MP_OBJ_NEW_SMALL_INT((mp_int_t)val);
+        } else {
+            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "float too big"));
+        }
+    }
 }
 #endif
 
@@ -311,6 +369,7 @@ STATIC mp_obj_t int_from_bytes(mp_uint_t n_args, const mp_obj_t *args) {
     // TODO: Support long ints
     // TODO: Support byteorder param (assumes 'little' at the moment)
     // TODO: Support signed param (assumes signed=False at the moment)
+    (void)n_args;
 
     // get the buffer info
     mp_buffer_info_t bufinfo;
@@ -332,12 +391,14 @@ STATIC mp_obj_t int_to_bytes(mp_uint_t n_args, const mp_obj_t *args) {
     // TODO: Support long ints
     // TODO: Support byteorder param (assumes 'little')
     // TODO: Support signed param (assumes signed=False)
+    (void)n_args;
 
     mp_int_t val = mp_obj_int_get_checked(args[0]);
-    mp_int_t len = MP_OBJ_SMALL_INT_VALUE(args[1]);
+    mp_uint_t len = MP_OBJ_SMALL_INT_VALUE(args[1]);
 
-    byte *data;
-    mp_obj_t o = mp_obj_str_builder_start(&mp_type_bytes, len, &data);
+    vstr_t vstr;
+    vstr_init_len(&vstr, len);
+    byte *data = (byte*)vstr.buf;
     memset(data, 0, len);
 
     if (MP_ENDIANNESS_LITTLE) {
@@ -349,7 +410,7 @@ STATIC mp_obj_t int_to_bytes(mp_uint_t n_args, const mp_obj_t *args) {
         }
     }
 
-    return mp_obj_str_builder_end(o);
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(int_to_bytes_obj, 2, 4, int_to_bytes);
 

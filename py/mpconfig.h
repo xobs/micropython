@@ -178,7 +178,7 @@
 #endif
 
 // Whether to build functions that print debugging info:
-//   mp_token_show
+//   mp_lexer_show_token
 //   mp_bytecode_print
 //   mp_parse_node_print
 #ifndef MICROPY_DEBUG_PRINTERS
@@ -233,6 +233,11 @@
 // Whether to include REPL helper function
 #ifndef MICROPY_HELPER_REPL
 #define MICROPY_HELPER_REPL (0)
+#endif
+
+// Whether port requires event-driven REPL functions
+#ifndef MICROPY_REPL_EVENT_DRIVEN
+#define MICROPY_REPL_EVENT_DRIVEN (0)
 #endif
 
 // Whether to include lexer helper function for unix
@@ -323,6 +328,11 @@ typedef double mp_float_t;
 #define MICROPY_MODULE_WEAK_LINKS (0)
 #endif
 
+// Whether frozen modules are supported
+#ifndef MICROPY_MODULE_FROZEN
+#define MICROPY_MODULE_FROZEN (0)
+#endif
+
 // Whether you can override builtins in the builtins module
 #ifndef MICROPY_CAN_OVERRIDE_BUILTINS
 #define MICROPY_CAN_OVERRIDE_BUILTINS (0)
@@ -366,6 +376,12 @@ typedef double mp_float_t;
 #define MICROPY_PY_BUILTINS_PROPERTY (1)
 #endif
 
+// Whether to support complete set of special methods
+// for user classes, otherwise only the most used
+#ifndef MICROPY_PY_ALL_SPECIAL_METHODS
+#define MICROPY_PY_ALL_SPECIAL_METHODS (0)
+#endif
+
 // Whether to support compile function
 #ifndef MICROPY_PY_BUILTINS_COMPILE
 #define MICROPY_PY_BUILTINS_COMPILE (0)
@@ -393,6 +409,12 @@ typedef double mp_float_t;
 #define MICROPY_PY_ARRAY (1)
 #endif
 
+// Whether to support slice assignments for array (and bytearray).
+// This is rarely used, but adds ~0.5K of code.
+#ifndef MICROPY_PY_ARRAY_SLICE_ASSIGN
+#define MICROPY_PY_ARRAY_SLICE_ASSIGN (0)
+#endif
+
 // Whether to provide "collections" module
 #ifndef MICROPY_PY_COLLECTIONS
 #define MICROPY_PY_COLLECTIONS (1)
@@ -401,6 +423,11 @@ typedef double mp_float_t;
 // Whether to provide "math" module
 #ifndef MICROPY_PY_MATH
 #define MICROPY_PY_MATH (1)
+#endif
+
+// Whether to provide special math functions: math.{erf,erfc,gamma,lgamma}
+#ifndef MICROPY_PY_MATH_SPECIAL_FUNCTIONS
+#define MICROPY_PY_MATH_SPECIAL_FUNCTIONS (0)
 #endif
 
 // Whether to provide "cmath" module
@@ -520,6 +547,14 @@ typedef double mp_float_t;
 /*****************************************************************************/
 /* Miscellaneous settings                                                    */
 
+// All uPy objects in ROM must be aligned on at least a 4 byte boundary
+// so that the small-int/qstr/pointer distinction can be made.  For machines
+// that don't do this (eg 16-bit CPU), define the following macro to something
+// like __attribute__((aligned(4))).
+#ifndef MICROPY_OBJ_BASE_ALIGNMENT
+#define MICROPY_OBJ_BASE_ALIGNMENT
+#endif
+
 // On embedded platforms, these will typically enable/disable irqs.
 #ifndef MICROPY_BEGIN_ATOMIC_SECTION
 #define MICROPY_BEGIN_ATOMIC_SECTION() (0)
@@ -569,6 +604,9 @@ typedef double mp_float_t;
 #define MICROPY_MAKE_POINTER_CALLABLE(p) (p)
 #endif
 
+// If these MP_PLAT_* macros are overridden then the memory allocated by them
+// must be somehow reachable for marking by the GC, since the native code
+// generators store pointers to GC managed memory in the code.
 #ifndef MP_PLAT_ALLOC_EXEC
 #define MP_PLAT_ALLOC_EXEC(min_size, ptr, size) do { *ptr = m_new(byte, min_size); *size = min_size; } while(0)
 #endif

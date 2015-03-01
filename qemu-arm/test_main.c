@@ -5,7 +5,6 @@
 
 #include "py/nlr.h"
 #include "py/obj.h"
-#include "py/parsehelper.h"
 #include "py/compile.h"
 #include "py/runtime0.h"
 #include "py/runtime.h"
@@ -24,31 +23,23 @@ inline void do_str(const char *src) {
         tt_abort_msg("Lexer initialization error");
     }
 
-    mp_parse_error_kind_t parse_error_kind;
-    mp_parse_node_t pn = mp_parse(lex, MP_PARSE_FILE_INPUT, &parse_error_kind);
-
-    if (pn == MP_PARSE_NODE_NULL) {
-        mp_parse_show_exception(lex, parse_error_kind);
-        mp_lexer_free(lex);
-        tt_abort_msg("Parser error");
-    }
-
-    // parse okay
-    qstr source_name = lex->source_name;
-    mp_lexer_free(lex);
-    mp_obj_t module_fun = mp_compile(pn, source_name, MP_EMIT_OPT_NONE, true);
-
-    if (mp_obj_is_exception_instance(module_fun)) {
-        mp_obj_print_exception(printf_wrapper, NULL, module_fun);
-        tt_abort_msg("Compile error");
-    }
-
     nlr_buf_t nlr;
     if (nlr_push(&nlr) == 0) {
+        qstr source_name = lex->source_name;
+        mp_parse_node_t pn = mp_parse(lex, MP_PARSE_FILE_INPUT);
+        mp_obj_t module_fun = mp_compile(pn, source_name, MP_EMIT_OPT_NONE, true);
         mp_call_function_0(module_fun);
         nlr_pop();
     } else {
-        mp_obj_print_exception(printf_wrapper, NULL, (mp_obj_t)nlr.ret_val);
+        mp_obj_t exc = (mp_obj_t)nlr.ret_val;
+        if (mp_obj_is_subclass_fast(mp_obj_get_type(exc), &mp_type_SystemExit)) {
+            // Assume that sys.exit() is called to skip the test.
+            // TODO: That can be always true, we should set up convention to
+            // use specific exit code as skip indicator.
+            tinytest_set_test_skipped_();
+            return;
+        }
+        mp_obj_print_exception(printf_wrapper, NULL, exc);
         tt_abort_msg("Uncaught exception");
     }
 end:

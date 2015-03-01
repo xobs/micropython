@@ -179,6 +179,8 @@ int pfenv_print_int(const pfenv_t *pfenv, mp_uint_t x, int sgn, int base, int ba
 }
 
 int pfenv_print_mp_int(const pfenv_t *pfenv, mp_obj_t x, int sgn, int base, int base_char, int flags, char fill, int width, int prec) {
+    (void)sgn; // TODO why is sgn unused?
+
     if (!MP_OBJ_IS_INT(x)) {
         // This will convert booleans to int, or raise an error for
         // non-integer types.
@@ -306,7 +308,7 @@ int pfenv_print_mp_int(const pfenv_t *pfenv, mp_obj_t x, int sgn, int base, int 
     }
 
     if (buf != stack_buf) {
-        m_free(buf, buf_size);
+        m_del(char, buf, buf_size);
     }
     return len;
 }
@@ -341,12 +343,15 @@ int pfenv_print_float(const pfenv_t *pfenv, mp_float_t f, char fmt, int flags, c
     *fmt_s = '\0';
 
     len = snprintf(buf, sizeof(buf), fmt_buf, prec, f);
+    if (len < 0) {
+        len = 0;
+    }
 #else
 #error Unknown MICROPY FLOAT IMPL
 #endif
     char *s = buf;
 
-    if ((flags & PF_FLAG_ADD_PERCENT) && (len + 1) < sizeof(buf)) {
+    if ((flags & PF_FLAG_ADD_PERCENT) && (size_t)(len + 1) < sizeof(buf)) {
         buf[len++] = '%';
         buf[len] = '\0';
     }

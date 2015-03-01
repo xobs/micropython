@@ -11,6 +11,7 @@
 #define MICROPY_MEM_STATS           (0)
 #define MICROPY_DEBUG_PRINTERS      (0)
 #define MICROPY_ENABLE_GC           (1)
+#define MICROPY_REPL_EVENT_DRIVEN   (0)
 #define MICROPY_HELPER_REPL         (1)
 #define MICROPY_HELPER_LEXER_UNIX   (0)
 #define MICROPY_ENABLE_SOURCE_LINE  (0)
@@ -31,6 +32,7 @@
 #define MICROPY_PY_IO               (0)
 #define MICROPY_PY_STRUCT           (0)
 #define MICROPY_PY_SYS              (0)
+#define MICROPY_MODULE_FROZEN       (0)
 #define MICROPY_CPYTHON_COMPAT      (0)
 #define MICROPY_LONGINT_IMPL        (MICROPY_LONGINT_IMPL_NONE)
 #define MICROPY_FLOAT_IMPL          (MICROPY_FLOAT_IMPL_NONE)
@@ -63,6 +65,10 @@ extern const struct _mp_obj_fun_builtin_t mp_builtin_open_obj;
 #include <alloca.h>
 
 #define HAL_GetTick() 0
+int mp_hal_stdin_rx_chr(void);
+void mp_hal_stdout_tx_str(const char *str);
+void mp_hal_stdout_tx_strn(const char *str, mp_uint_t len);
+void mp_hal_stdout_tx_strn_cooked(const char *str, mp_uint_t len);
 
 static inline void mp_hal_set_interrupt_char(char c) {}
 

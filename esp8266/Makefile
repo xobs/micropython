@@ -45,14 +45,16 @@ SRC_C = \
 	main.c \
 	esp_mphal.c \
 	gccollect.c \
-	pybstdio.c \
 	uart.c \
 	modpyb.c \
+	modpybpin.c \
+	modesp.c \
 
 STM_SRC_C = $(addprefix stmhal/,\
 	printf.c \
 	string0.c \
 	pyexec.c \
+	pybstdio.c \
 	)
 
 LIB_SRC_C = $(addprefix lib/,\
@@ -78,6 +80,9 @@ deploy: $(BUILD)/firmware-combined.bin
 	$(ECHO) "Writing $< to the board"
 	#$(Q)esptool.py --port $(PORT) write_flash 0 $<
 	$(Q)esptool.py --port $(PORT) write_flash 0 $(BUILD)/firmware.elf-0x00000.bin 0x10000 $(BUILD)/firmware.elf-0x10000.bin
+
+reset:
+	echo -e "\r\nimport pyb; pyb.hard_reset()\r\n" >$(PORT)
 
 $(BUILD)/firmware-combined.bin: $(BUILD)/firmware.elf
 	$(ECHO) "Create $@"

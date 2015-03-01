@@ -49,6 +49,7 @@ typedef struct _mp_obj_complex_t {
 } mp_obj_complex_t;
 
 STATIC void complex_print(void (*print)(void *env, const char *fmt, ...), void *env, mp_obj_t o_in, mp_print_kind_t kind) {
+    (void)kind;
     mp_obj_complex_t *o = o_in;
 #if MICROPY_FLOAT_IMPL == MICROPY_FLOAT_IMPL_FLOAT
     char buf[16];
@@ -57,7 +58,10 @@ STATIC void complex_print(void (*print)(void *env, const char *fmt, ...), void *
         print(env, "%sj", buf);
     } else {
         mp_format_float(o->real, buf, sizeof(buf), 'g', 7, '\0');
-        print(env, "(%s+", buf);
+        print(env, "(%s", buf);
+        if (o->imag >= 0) {
+            print(env, "+");
+        }
         mp_format_float(o->imag, buf, sizeof(buf), 'g', 7, '\0');
         print(env, "%sj)", buf);
     }
@@ -68,7 +72,10 @@ STATIC void complex_print(void (*print)(void *env, const char *fmt, ...), void *
         print(env, "%sj", buf);
     } else {
         sprintf(buf, "%.16g", (double)o->real);
-        print(env, "(%s+", buf);
+        print(env, "(%s", buf);
+        if (o->imag >= 0) {
+            print(env, "+");
+        }
         sprintf(buf, "%.16g", (double)o->imag);
         print(env, "%sj)", buf);
     }
@@ -76,6 +83,7 @@ STATIC void complex_print(void (*print)(void *env, const char *fmt, ...), void *
 }
 
 STATIC mp_obj_t complex_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *args) {
+    (void)type_in;
     mp_arg_check_num(n_args, n_kw, 0, 2, false);
 
     switch (n_args) {
@@ -87,7 +95,7 @@ STATIC mp_obj_t complex_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n
                 // a string, parse it
                 mp_uint_t l;
                 const char *s = mp_obj_str_get_data(args[0], &l);
-                return mp_parse_num_decimal(s, l, true, true);
+                return mp_parse_num_decimal(s, l, true, true, NULL);
             } else if (MP_OBJ_IS_TYPE(args[0], &mp_type_complex)) {
                 // a complex, just return it
                 return args[0];

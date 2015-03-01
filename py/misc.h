@@ -92,7 +92,15 @@ size_t m_get_peak_bytes_allocated(void);
 
 /** unichar / UTF-8 *********************************************/
 
-typedef int unichar; // TODO
+#if MICROPY_PY_BUILTINS_STR_UNICODE
+#include <stdint.h> // only include if we need it
+// with unicode enabled we need a type which can fit chars up to 0x10ffff
+typedef uint32_t unichar;
+#else
+// without unicode enabled we can only need to fit chars up to 0xff
+// (on 16-bit archs uint is 16-bits and more efficient than uint32_t)
+typedef uint unichar;
+#endif
 
 unichar utf8_get_char(const byte *s);
 const byte *utf8_next_char(const byte *s);
@@ -124,6 +132,7 @@ typedef struct _vstr_t {
 #define VSTR_FIXED(vstr, alloc) vstr_t vstr; char vstr##_buf[(alloc)]; vstr_init_fixed_buf(&vstr, (alloc), vstr##_buf);
 
 void vstr_init(vstr_t *vstr, size_t alloc);
+void vstr_init_len(vstr_t *vstr, size_t len);
 void vstr_init_fixed_buf(vstr_t *vstr, size_t alloc, char *buf);
 void vstr_clear(vstr_t *vstr);
 vstr_t *vstr_new(void);
@@ -135,9 +144,8 @@ char *vstr_str(vstr_t *vstr);
 size_t vstr_len(vstr_t *vstr);
 void vstr_hint_size(vstr_t *vstr, size_t size);
 char *vstr_extend(vstr_t *vstr, size_t size);
-bool vstr_set_size(vstr_t *vstr, size_t size);
-bool vstr_shrink(vstr_t *vstr);
 char *vstr_add_len(vstr_t *vstr, size_t len);
+char *vstr_null_terminated_str(vstr_t *vstr);
 void vstr_add_byte(vstr_t *vstr, byte v);
 void vstr_add_char(vstr_t *vstr, unichar chr);
 void vstr_add_str(vstr_t *vstr, const char *str);
@@ -183,5 +191,18 @@ static inline mp_uint_t count_lead_ones(byte val) {
     return c;
 }
 #endif
+
+/** float internals *************/
+
+#if MICROPY_PY_BUILTINS_FLOAT
+#if MICROPY_FLOAT_IMPL == MICROPY_FLOAT_IMPL_DOUBLE
+#define MP_FLOAT_EXP_BITS (11)
+#define MP_FLOAT_FRAC_BITS (52)
+#elif MICROPY_FLOAT_IMPL == MICROPY_FLOAT_IMPL_FLOAT
+#define MP_FLOAT_EXP_BITS (8)
+#define MP_FLOAT_FRAC_BITS (23)
+#endif
+#define MP_FLOAT_EXP_BIAS ((1 << (MP_FLOAT_EXP_BITS - 1)) - 1)
+#endif // MICROPY_PY_BUILTINS_FLOAT
 
 #endif // __MICROPY_INCLUDED_PY_MISC_H__

@@ -199,19 +199,6 @@ dispatch_loop:
                     DISPATCH();
                 }
 
-                ENTRY(MP_BC_LOAD_CONST_INT): {
-                    DECODE_QSTR;
-                    PUSH(mp_load_const_int(qst));
-                    DISPATCH();
-                }
-
-                ENTRY(MP_BC_LOAD_CONST_DEC): {
-                    MARK_EXC_IP_SELECTIVE();
-                    DECODE_QSTR;
-                    PUSH(mp_load_const_dec(qst));
-                    DISPATCH();
-                }
-
                 ENTRY(MP_BC_LOAD_CONST_BYTES): {
                     DECODE_QSTR;
                     PUSH(mp_load_const_bytes(qst));
@@ -221,6 +208,12 @@ dispatch_loop:
                 ENTRY(MP_BC_LOAD_CONST_STRING): {
                     DECODE_QSTR;
                     PUSH(mp_load_const_str(qst));
+                    DISPATCH();
+                }
+
+                ENTRY(MP_BC_LOAD_CONST_OBJ): {
+                    DECODE_PTR;
+                    PUSH(ptr);
                     DISPATCH();
                 }
 
@@ -573,46 +566,51 @@ dispatch_loop:
                         SET_TOP(mp_const_none);
                         mp_call_function_n_kw(obj, 3, 0, no_exc);
                     } else if (MP_OBJ_IS_SMALL_INT(TOP())) {
-                        mp_obj_t cause = POP();
+                        mp_obj_t cause = TOP();
                         switch (MP_OBJ_SMALL_INT_VALUE(cause)) {
-                            case UNWIND_RETURN: {
-                                mp_obj_t retval = POP();
-                                mp_call_function_n_kw(TOP(), 3, 0, no_exc);
-                                SET_TOP(retval);
-                                PUSH(cause);
-                                break;
-                            }
-                            case UNWIND_JUMP: {
+                            case UNWIND_RETURN:
                                 mp_call_function_n_kw(sp[-2], 3, 0, no_exc);
-                                // Pop __exit__ boundmethod at sp[-2]
-                                sp[-2] = sp[-1];
-                                sp[-1] = sp[0];
-                                SET_TOP(cause);
                                 break;
-                            }
+                            case UNWIND_JUMP:
+                            with_cleanup_no_other_choice:
+                                mp_call_function_n_kw(sp[-3], 3, 0, no_exc);
+                                // Pop __exit__ boundmethod at sp[-3]
+                                sp[-3] = sp[-2];
+                                break;
                             default:
                                 assert(0);
+                                goto with_cleanup_no_other_choice; // to help flow control analysis
                         }
+                        sp[-2] = sp[-1]; // copy retval down
+                        sp[-1] = sp[0]; // copy cause down
+                        sp--; // discard top value (was cause)
                     } else if (mp_obj_is_exception_type(TOP())) {
-                        mp_obj_t args[3] = {sp[0], sp[-1], sp[-2]};
-                        mp_obj_t ret_value = mp_call_function_n_kw(sp[-3], 3, 0, args);
-                        // Pop __exit__ boundmethod at sp[-3]
-                        // TODO: Once semantics is proven, optimize for case when ret_value == True
-                        sp[-3] = sp[-2];
-                        sp[-2] = sp[-1];
-                        sp[-1] = sp[0];
-                        sp--;
+                        // Need to pass (sp[0], sp[-1], sp[-2]) as arguments so must reverse the
+                        // order of these on the value stack (don't want to create a temporary
+                        // array because it increases stack footprint of the VM).
+                        mp_obj_t obj = sp[-2];
+                        sp[-2] = sp[0];
+                        sp[0] = obj;
+                        mp_obj_t ret_value = mp_call_function_n_kw(sp[-3], 3, 0, &sp[-2]);
                         if (mp_obj_is_true(ret_value)) {
                             // This is what CPython does
                             //PUSH(MP_OBJ_NEW_SMALL_INT(UNWIND_SILENCED));
                             // But what we need to do is - pop exception from value stack...
-                            sp -= 3;
+                            sp -= 4;
                             // ... pop "with" exception handler, and signal END_FINALLY
                             // to just execute finally handler normally (by pushing None
                             // on value stack)
                             assert(exc_sp >= exc_stack);
                             POP_EXC_BLOCK();
                             PUSH(mp_const_none);
+                        } else {
+                            // Pop __exit__ boundmethod at sp[-3], remembering that top 3 values
+                            // are reversed.
+                            sp[-3] = sp[0];
+                            obj = sp[-2];
+                            sp[-2] = sp[-1];
+                            sp[-1] = obj;
+                            sp--;
                         }
                     } else {
                         assert(0);

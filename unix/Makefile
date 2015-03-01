@@ -69,6 +69,10 @@ ifeq ($(MICROPY_PY_TERMIOS),1)
 CFLAGS_MOD += -DMICROPY_PY_TERMIOS=1
 SRC_MOD += modtermios.c
 endif
+ifeq ($(MICROPY_PY_SOCKET),1)
+CFLAGS_MOD += -DMICROPY_PY_SOCKET=1
+SRC_MOD += modsocket.c
+endif
 ifeq ($(MICROPY_PY_FFI),1)
 LIBFFI_LDFLAGS_MOD := $(shell pkg-config --libs libffi)
 LIBFFI_CFLAGS_MOD := $(shell pkg-config --cflags libffi)
@@ -87,7 +91,6 @@ SRC_C = \
 	gccollect.c \
 	input.c \
 	file.c \
-	modsocket.c \
 	modos.c \
 	alloc.c \
 	$(SRC_MOD)
@@ -122,4 +125,17 @@ uninstall:
 # build synthetically fast interpreter for benchmarking
 fast:
 	@echo Make sure to run make -B
-	$(MAKE) COPT="-O2 -DNDEBUG -fno-crossjumping" CFLAGS_EXTRA='-DMP_CONFIGFILE="<mpconfigport_fast.h>"' BUILD=build-fast
+	$(MAKE) COPT="-O2 -DNDEBUG -fno-crossjumping" CFLAGS_EXTRA='-DMP_CONFIGFILE="<mpconfigport_fast.h>"' BUILD=build-fast PROG=micropython_fast
+
+# build a minimal interpreter
+minimal:
+	@echo Make sure to run make -B
+	$(MAKE) COPT="-Os -DNDEBUG" CFLAGS_EXTRA='-DMP_CONFIGFILE="<mpconfigport_minimal.h>"' BUILD=build-minimal PROG=micropython_minimal MICROPY_PY_TIME=0 MICROPY_PY_TERMIOS=0 MICROPY_PY_SOCKET=0 MICROPY_PY_FFI=0
+
+# build an interpreter for coverage testing and do the testing
+coverage:
+	@echo Make sure to run make -B
+	$(MAKE) COPT="-O0" CFLAGS_EXTRA='-fprofile-arcs -ftest-coverage' LDFLAGS_EXTRA='-fprofile-arcs -ftest-coverage' BUILD=build-coverage PROG=micropython_coverage
+	$(eval DIRNAME=$(notdir $(CURDIR)))
+	cd ../tests && MICROPY_MICROPYTHON=../$(DIRNAME)/micropython_coverage ./run-tests
+	gcov -o build-coverage/py ../py/*.c

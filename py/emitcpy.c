@@ -171,20 +171,6 @@ STATIC void emit_cpy_load_const_small_int(emit_t *emit, mp_int_t arg) {
     }
 }
 
-STATIC void emit_cpy_load_const_int(emit_t *emit, qstr qst) {
-    emit_pre(emit, 1, 3);
-    if (emit->pass == MP_PASS_EMIT) {
-        printf("LOAD_CONST %s\n", qstr_str(qst));
-    }
-}
-
-STATIC void emit_cpy_load_const_dec(emit_t *emit, qstr qst) {
-    emit_pre(emit, 1, 3);
-    if (emit->pass == MP_PASS_EMIT) {
-        printf("LOAD_CONST %s\n", qstr_str(qst));
-    }
-}
-
 STATIC void print_quoted_str(qstr qst, bool bytes) {
     const char *str = qstr_str(qst);
     int len = strlen(str);
@@ -231,12 +217,21 @@ STATIC void emit_cpy_load_const_str(emit_t *emit, qstr qst, bool bytes) {
     }
 }
 
+STATIC void emit_cpy_load_const_obj(emit_t *emit, void *obj) {
+    emit_pre(emit, 1, 3);
+    if (emit->pass == MP_PASS_EMIT) {
+        printf("LOAD_CONST ");
+        mp_obj_print(obj, PRINT_REPR);
+        printf("\n");
+    }
+}
+
 STATIC void emit_cpy_load_null(emit_t *emit) {
     // unused for cpy
     assert(0);
 }
 
-STATIC void emit_cpy_load_fast(emit_t *emit, qstr qst, mp_uint_t id_flags, mp_uint_t local_num) {
+STATIC void emit_cpy_load_fast(emit_t *emit, qstr qst, mp_uint_t local_num) {
     emit_pre(emit, 1, 3);
     if (emit->pass == MP_PASS_EMIT) {
         printf("LOAD_FAST " UINT_FMT " %s\n", local_num, qstr_str(qst));
@@ -420,31 +415,25 @@ STATIC void emit_cpy_jump(emit_t *emit, mp_uint_t label) {
     }
 }
 
-STATIC void emit_cpy_pop_jump_if_true(emit_t *emit, mp_uint_t label) {
+STATIC void emit_cpy_pop_jump_if(emit_t *emit, bool cond, mp_uint_t label) {
     emit_pre(emit, -1, 3);
     if (emit->pass == MP_PASS_EMIT) {
-        printf("POP_JUMP_IF_TRUE " UINT_FMT "\n", emit->label_offsets[label]);
+        if (cond) {
+            printf("POP_JUMP_IF_TRUE " UINT_FMT "\n", emit->label_offsets[label]);
+        } else {
+            printf("POP_JUMP_IF_FALSE " UINT_FMT "\n", emit->label_offsets[label]);
+        }
     }
 }
 
-STATIC void emit_cpy_pop_jump_if_false(emit_t *emit, mp_uint_t label) {
+STATIC void emit_cpy_jump_if_or_pop(emit_t *emit, bool cond, mp_uint_t label) {
     emit_pre(emit, -1, 3);
     if (emit->pass == MP_PASS_EMIT) {
-        printf("POP_JUMP_IF_FALSE " UINT_FMT "\n", emit->label_offsets[label]);
-    }
-}
-
-STATIC void emit_cpy_jump_if_true_or_pop(emit_t *emit, mp_uint_t label) {
-    emit_pre(emit, -1, 3);
-    if (emit->pass == MP_PASS_EMIT) {
-        printf("JUMP_IF_TRUE_OR_POP " UINT_FMT "\n", emit->label_offsets[label]);
-    }
-}
-
-STATIC void emit_cpy_jump_if_false_or_pop(emit_t *emit, mp_uint_t label) {
-    emit_pre(emit, -1, 3);
-    if (emit->pass == MP_PASS_EMIT) {
-        printf("JUMP_IF_FALSE_OR_POP " UINT_FMT "\n", emit->label_offsets[label]);
+        if (cond) {
+            printf("JUMP_IF_TRUE_OR_POP " UINT_FMT "\n", emit->label_offsets[label]);
+        } else {
+            printf("JUMP_IF_FALSE_OR_POP " UINT_FMT "\n", emit->label_offsets[label]);
+        }
     }
 }
 
@@ -791,10 +780,10 @@ STATIC void emit_cpy_end_except_handler(emit_t *emit) {
     emit_cpy_adjust_stack_size(emit, -5); // stack adjust
 }
 
-STATIC void emit_cpy_load_const_verbatim_str(emit_t *emit, const char *str) {
+STATIC void emit_cpy_load_const_verbatim_strn(emit_t *emit, const char *str, mp_uint_t len) {
     emit_pre(emit, 1, 3);
     if (emit->pass == MP_PASS_EMIT) {
-        printf("LOAD_CONST %s\n", str);
+        printf("LOAD_CONST %.*s\n", (int)len, str);
     }
 }
 
@@ -830,9 +819,8 @@ const emit_method_table_t emit_cpython_method_table = {
     emit_cpy_import_star,
     emit_cpy_load_const_tok,
     emit_cpy_load_const_small_int,
-    emit_cpy_load_const_int,
-    emit_cpy_load_const_dec,
     emit_cpy_load_const_str,
+    emit_cpy_load_const_obj,
     emit_cpy_load_null,
     emit_cpy_load_fast,
     emit_cpy_load_deref,
@@ -860,10 +848,8 @@ const emit_method_table_t emit_cpython_method_table = {
     emit_cpy_rot_two,
     emit_cpy_rot_three,
     emit_cpy_jump,
-    emit_cpy_pop_jump_if_true,
-    emit_cpy_pop_jump_if_false,
-    emit_cpy_jump_if_true_or_pop,
-    emit_cpy_jump_if_false_or_pop,
+    emit_cpy_pop_jump_if,
+    emit_cpy_jump_if_or_pop,
     emit_cpy_break_loop,
     emit_cpy_continue_loop,
     emit_cpy_setup_with,
@@ -902,7 +888,7 @@ const emit_method_table_t emit_cpython_method_table = {
     emit_cpy_end_except_handler,
 
     // emitcpy specific functions
-    emit_cpy_load_const_verbatim_str,
+    emit_cpy_load_const_verbatim_strn,
     emit_cpy_load_closure,
     emit_cpy_setup_loop,
 };

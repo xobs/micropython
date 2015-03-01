@@ -39,9 +39,7 @@ STATIC mp_obj_t mod_ujson_dumps(mp_obj_t obj) {
     vstr_t vstr;
     vstr_init(&vstr, 8);
     mp_obj_print_helper((void (*)(void *env, const char *fmt, ...))vstr_printf, &vstr, obj, PRINT_JSON);
-    mp_obj_t ret = mp_obj_new_str(vstr.buf, vstr.len, false);
-    vstr_clear(&vstr);
-    return ret;
+    return mp_obj_new_str_from_vstr(&mp_type_str, &vstr);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(mod_ujson_dumps_obj, mod_ujson_dumps);
 
@@ -81,6 +79,9 @@ STATIC mp_obj_t mod_ujson_loads(mp_obj_t obj) {
             case ',':
             case ':':
             case ' ':
+            case '\t':
+            case '\n':
+            case '\r':
                 s += 1;
                 goto cont;
             case 'n':
@@ -160,9 +161,9 @@ STATIC mp_obj_t mod_ujson_loads(mp_obj_t obj) {
                     vstr_add_byte(&vstr, *s);
                 }
                 if (flt) {
-                    next = mp_parse_num_decimal(vstr.buf, vstr.len, false, false);
+                    next = mp_parse_num_decimal(vstr.buf, vstr.len, false, false, NULL);
                 } else {
-                    next = mp_parse_num_integer(vstr.buf, vstr.len, 10);
+                    next = mp_parse_num_integer(vstr.buf, vstr.len, 10, NULL);
                 }
                 break;
             }
@@ -238,7 +239,8 @@ STATIC mp_obj_t mod_ujson_loads(mp_obj_t obj) {
         // unexpected chars
         goto fail;
     }
-    if (stack.len != 0) {
+    if (stack_top == MP_OBJ_NULL || stack.len != 0) {
+        // not exactly 1 object
         goto fail;
     }
     vstr_clear(&vstr);

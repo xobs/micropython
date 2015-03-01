@@ -28,7 +28,6 @@
 #include <string.h>
 
 #include "py/nlr.h"
-#include "py/parsehelper.h"
 #include "py/compile.h"
 #include "py/runtime0.h"
 #include "py/runtime.h"
@@ -38,11 +37,13 @@
 #include "gccollect.h"
 #include MICROPY_HAL_H
 
+STATIC char heap[16384];
+
 void user_init(void) {
 soft_reset:
     mp_stack_set_limit(10240);
     mp_hal_init();
-    gc_init(&_heap_start, &_heap_end);
+    gc_init(heap, heap + sizeof(heap));
     gc_collect_init();
     mp_init();
     mp_obj_list_init(mp_sys_path, 0);
@@ -50,6 +51,12 @@ soft_reset:
 
     printf("\n");
 
+#if MICROPY_REPL_EVENT_DRIVEN
+    pyexec_friendly_repl_init();
+    uart_task_init();
+    return;
+    goto soft_reset;
+#else
     for (;;) {
         if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {
             if (pyexec_raw_repl() != 0) {
@@ -63,6 +70,7 @@ soft_reset:
     }
 
     goto soft_reset;
+#endif
 }
 
 mp_lexer_t *mp_lexer_new_from_file(const char *filename) {

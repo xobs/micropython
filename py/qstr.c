@@ -26,6 +26,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "py/mpstate.h"
 #include "py/qstr.h"
@@ -49,7 +50,7 @@
 //  - data follows
 //  - \0 terminated (for now, so they can be printed using printf)
 
-#define Q_GET_HASH(q)   ((q)[0] | ((q)[1] << 8))
+#define Q_GET_HASH(q)   ((mp_uint_t)(q)[0] | ((mp_uint_t)(q)[1] << 8))
 #define Q_GET_ALLOC(q)  (2 + MICROPY_QSTR_BYTES_IN_LEN + Q_GET_LENGTH(q) + 1)
 #define Q_GET_DATA(q)   ((q) + 2 + MICROPY_QSTR_BYTES_IN_LEN)
 #if MICROPY_QSTR_BYTES_IN_LEN == 1
@@ -148,6 +149,7 @@ qstr qstr_from_str(const char *str) {
 }
 
 qstr qstr_from_strn(const char *str, mp_uint_t len) {
+    assert(len < (1 << (8 * MICROPY_QSTR_BYTES_IN_LEN)));
     qstr q = qstr_find_strn(str, len);
     if (q == 0) {
         mp_uint_t hash = qstr_compute_hash((const byte*)str, len);
@@ -228,3 +230,13 @@ void qstr_pool_info(mp_uint_t *n_pool, mp_uint_t *n_qstr, mp_uint_t *n_str_data_
     }
     *n_total_bytes += *n_str_data_bytes;
 }
+
+#if MICROPY_PY_MICROPYTHON_MEM_INFO
+void qstr_dump_data(void) {
+    for (qstr_pool_t *pool = MP_STATE_VM(last_pool); pool != NULL && pool != &const_pool; pool = pool->prev) {
+        for (const byte **q = pool->qstrs, **q_top = pool->qstrs + pool->len; q < q_top; q++) {
+            printf("Q(%s)\n", Q_GET_DATA(*q));
+        }
+    }
+}
+#endif

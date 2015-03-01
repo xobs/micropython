@@ -59,10 +59,13 @@
 #define MICROPY_PY_BUILTINS_FROZENSET (1)
 #define MICROPY_PY_BUILTINS_COMPILE (1)
 #define MICROPY_PY_MICROPYTHON_MEM_INFO (1)
+#define MICROPY_PY_ALL_SPECIAL_METHODS (1)
+#define MICROPY_PY_ARRAY_SLICE_ASSIGN (1)
 #define MICROPY_PY_SYS_EXIT         (1)
 #define MICROPY_PY_SYS_PLATFORM     "linux"
 #define MICROPY_PY_SYS_MAXSIZE      (1)
 #define MICROPY_PY_SYS_STDFILES     (1)
+#define MICROPY_PY_MATH_SPECIAL_FUNCTIONS (1)
 #define MICROPY_PY_CMATH            (1)
 #define MICROPY_PY_IO_FILEIO        (1)
 #define MICROPY_PY_GC_COLLECT_RETVAL (1)
@@ -114,11 +117,16 @@ extern const struct _mp_obj_module_t mp_module_ffi;
 #else
 #define MICROPY_PY_TERMIOS_DEF
 #endif
+#if MICROPY_PY_SOCKET
+#define MICROPY_PY_SOCKET_DEF { MP_OBJ_NEW_QSTR(MP_QSTR_usocket), (mp_obj_t)&mp_module_socket },
+#else
+#define MICROPY_PY_SOCKET_DEF
+#endif
 
 #define MICROPY_PORT_BUILTIN_MODULES \
     MICROPY_PY_FFI_DEF \
     MICROPY_PY_TIME_DEF \
-    { MP_OBJ_NEW_QSTR(MP_QSTR_usocket), (mp_obj_t)&mp_module_socket }, \
+    MICROPY_PY_SOCKET_DEF \
     { MP_OBJ_NEW_QSTR(MP_QSTR__os), (mp_obj_t)&mp_module_os }, \
     MICROPY_PY_TERMIOS_DEF \
 
@@ -148,6 +156,7 @@ typedef const void *machine_const_ptr_t; // must be of pointer size
 
 void mp_unix_alloc_exec(mp_uint_t min_size, void** ptr, mp_uint_t *size);
 void mp_unix_free_exec(void *ptr, mp_uint_t size);
+void mp_unix_mark_exec(void);
 #define MP_PLAT_ALLOC_EXEC(min_size, ptr, size) mp_unix_alloc_exec(min_size, ptr, size)
 #define MP_PLAT_FREE_EXEC(ptr, size) mp_unix_free_exec(ptr, size)
 
@@ -158,7 +167,8 @@ extern const struct _mp_obj_fun_builtin_t mp_builtin_open_obj;
     { MP_OBJ_NEW_QSTR(MP_QSTR_open), (mp_obj_t)&mp_builtin_open_obj },
 
 #define MICROPY_PORT_ROOT_POINTERS \
-    mp_obj_t keyboard_interrupt_obj;
+    mp_obj_t keyboard_interrupt_obj; \
+    void *mmap_region_head; \
 
 // We need to provide a declaration/definition of alloca()
 #ifdef __FreeBSD__

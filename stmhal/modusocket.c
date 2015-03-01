@@ -132,10 +132,11 @@ STATIC mp_obj_t socket_accept(mp_obj_t self_in) {
     mod_network_socket_obj_t *self = self_in;
 
     // create new socket object
+    // starts with empty NIC so that finaliser doesn't run close() method if accept() fails
     mod_network_socket_obj_t *socket2 = m_new_obj_with_finaliser(mod_network_socket_obj_t);
     socket2->base.type = (mp_obj_t)&socket_type;
-    socket2->nic = self->nic;
-    socket2->nic_type = self->nic_type;
+    socket2->nic = MP_OBJ_NULL;
+    socket2->nic_type = NULL;
 
     // accept incoming connection
     uint8_t ip[MOD_NETWORK_IPADDR_BUF_SIZE];
@@ -144,6 +145,10 @@ STATIC mp_obj_t socket_accept(mp_obj_t self_in) {
     if (self->nic_type->accept(self, socket2, ip, &port, &_errno) != 0) {
         nlr_raise(mp_obj_new_exception_arg1(&mp_type_OSError, MP_OBJ_NEW_SMALL_INT(_errno)));
     }
+
+    // new socket has valid state, so set the NIC to the same as parent
+    socket2->nic = self->nic;
+    socket2->nic_type = self->nic_type;
 
     // make the return value
     mp_obj_tuple_t *client = mp_obj_new_tuple(2, NULL);
@@ -201,17 +206,18 @@ STATIC mp_obj_t socket_recv(mp_obj_t self_in, mp_obj_t len_in) {
         nlr_raise(mp_obj_new_exception_arg1(&mp_type_OSError, MP_OBJ_NEW_SMALL_INT(ENOTCONN)));
     }
     mp_int_t len = mp_obj_get_int(len_in);
-    byte *buf;
-    mp_obj_t ret_obj = mp_obj_str_builder_start(&mp_type_bytes, len, &buf);
+    vstr_t vstr;
+    vstr_init_len(&vstr, len);
     int _errno;
-    mp_uint_t ret = self->nic_type->recv(self, buf, len, &_errno);
+    mp_uint_t ret = self->nic_type->recv(self, (byte*)vstr.buf, len, &_errno);
     if (ret == -1) {
         nlr_raise(mp_obj_new_exception_arg1(&mp_type_OSError, MP_OBJ_NEW_SMALL_INT(_errno)));
     }
     if (ret == 0) {
         return mp_const_empty_bytes;
     }
-    return mp_obj_str_builder_end_with_len(ret_obj, ret);
+    vstr.len = ret;
+    return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(socket_recv_obj, socket_recv);
 
@@ -248,25 +254,23 @@ STATIC mp_obj_t socket_recvfrom(mp_obj_t self_in, mp_obj_t len_in) {
         // not connected
         nlr_raise(mp_obj_new_exception_arg1(&mp_type_OSError, MP_OBJ_NEW_SMALL_INT(ENOTCONN)));
     }
-    mp_int_t len = mp_obj_get_int(len_in);
-    byte *buf;
-    mp_obj_t ret_obj = mp_obj_str_builder_start(&mp_type_bytes, len, &buf);
+    vstr_t vstr;
+    vstr_init_len(&vstr, mp_obj_get_int(len_in));
     byte ip[4];
     mp_uint_t port;
     int _errno;
-    mp_int_t ret = self->nic_type->recvfrom(self, buf, len, ip, &port, &_errno);
+    mp_int_t ret = self->nic_type->recvfrom(self, (byte*)vstr.buf, vstr.len, ip, &port, &_errno);
     if (ret == -1) {
         nlr_raise(mp_obj_new_exception_arg1(&mp_type_OSError, MP_OBJ_NEW_SMALL_INT(_errno)));
     }
+    mp_obj_t tuple[2];
     if (ret == 0) {
-        ret_obj = mp_const_empty_bytes;
+        tuple[0] = mp_const_empty_bytes;
     } else {
-        ret_obj = mp_obj_str_builder_end_with_len(ret_obj, ret);
+        vstr.len = ret;
+        tuple[0] = mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
     }
-    mp_obj_t tuple[2] = {
-        ret_obj,
-        mod_network_format_inet_addr(ip, port),
-    };
+    tuple[1] = mod_network_format_inet_addr(ip, port);
     return mp_obj_new_tuple(2, tuple);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(socket_recvfrom_obj, socket_recvfrom);
@@ -280,8 +284,9 @@ STATIC mp_obj_t socket_setsockopt(mp_uint_t n_args, const mp_obj_t *args) {
 
     const void *optval;
     mp_uint_t optlen;
+    mp_int_t val;
     if (mp_obj_is_integer(args[3])) {
-        mp_int_t val = mp_obj_int_get_truncated(args[3]);
+        val = mp_obj_int_get_truncated(args[3]);
         optval = &val;
         optlen = sizeof(val);
     } else {
@@ -384,8 +389,8 @@ STATIC mp_obj_t mod_usocket_getaddrinfo(mp_obj_t host_in, mp_obj_t port_in) {
     mp_int_t port = mp_obj_get_int(port_in);
 
     // find a NIC that can do a name lookup
-    for (mp_uint_t i = 0; i < mod_network_nic_list.len; i++) {
-        mp_obj_t nic = mod_network_nic_list.items[i];
+    for (mp_uint_t i = 0; i < MP_STATE_PORT(mod_network_nic_list).len; i++) {
+        mp_obj_t nic = MP_STATE_PORT(mod_network_nic_list).items[i];
         mod_network_nic_type_t *nic_type = (mod_network_nic_type_t*)mp_obj_get_type(nic);
         if (nic_type->gethostbyname != NULL) {
             uint8_t out_ip[MOD_NETWORK_IPADDR_BUF_SIZE];

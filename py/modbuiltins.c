@@ -182,11 +182,11 @@ STATIC mp_obj_t mp_builtin_chr(mp_obj_t o_in) {
     return mp_obj_new_str(str, len, true);
     #else
     mp_int_t ord = mp_obj_get_int(o_in);
-    if (0 <= ord && ord <= 0x10ffff) {
+    if (0 <= ord && ord <= 0xff) {
         char str[1] = {ord};
         return mp_obj_new_str(str, 1, true);
     } else {
-        nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "chr() arg not in range(0x110000)"));
+        nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "chr() arg not in range(256)"));
     }
     #endif
 }
@@ -442,18 +442,27 @@ MP_DEFINE_CONST_FUN_OBJ_KW(mp_builtin_print_obj, 0, mp_builtin_print);
 
 STATIC mp_obj_t mp_builtin___repl_print__(mp_obj_t o) {
     if (o != mp_const_none) {
-        mp_builtin_print(1, &o, (mp_map_t*)&mp_const_empty_map);
+        #if MICROPY_PY_IO
+        extern mp_uint_t mp_sys_stdout_obj; // type is irrelevant, just need pointer
+        pfenv_t pfenv;
+        pfenv.data = &mp_sys_stdout_obj;
+        pfenv.print_strn = (void (*)(void *, const char *, mp_uint_t))mp_stream_write;
+        mp_obj_print_helper((void (*)(void *env, const char *fmt, ...))pfenv_printf, &pfenv, o, PRINT_REPR);
+        mp_stream_write(&mp_sys_stdout_obj, "\n", 1);
+        #else
+        mp_obj_print(o, PRINT_REPR);
+        printf("\n");
+        #endif
     }
     return mp_const_none;
 }
 MP_DEFINE_CONST_FUN_OBJ_1(mp_builtin___repl_print___obj, mp_builtin___repl_print__);
 
 STATIC mp_obj_t mp_builtin_repr(mp_obj_t o_in) {
-    vstr_t *vstr = vstr_new();
-    mp_obj_print_helper((void (*)(void *env, const char *fmt, ...))vstr_printf, vstr, o_in, PRINT_REPR);
-    mp_obj_t s = mp_obj_new_str(vstr->buf, vstr->len, false);
-    vstr_free(vstr);
-    return s;
+    vstr_t vstr;
+    vstr_init(&vstr, 16);
+    mp_obj_print_helper((void (*)(void *env, const char *fmt, ...))vstr_printf, &vstr, o_in, PRINT_REPR);
+    return mp_obj_new_str_from_vstr(&mp_type_str, &vstr);
 }
 MP_DEFINE_CONST_FUN_OBJ_1(mp_builtin_repr_obj, mp_builtin_repr);
 
@@ -525,19 +534,19 @@ STATIC inline mp_obj_t mp_load_attr_default(mp_obj_t base, qstr attr, mp_obj_t d
 }
 
 STATIC mp_obj_t mp_builtin_getattr(mp_uint_t n_args, const mp_obj_t *args) {
-    mp_obj_t attr = args[1];
-    if (MP_OBJ_IS_TYPE(attr, &mp_type_str)) {
-        attr = mp_obj_str_intern(attr);
-    } else if (!MP_OBJ_IS_QSTR(attr)) {
-        nlr_raise(mp_obj_new_exception_msg(&mp_type_TypeError, "string required"));
-    }
     mp_obj_t defval = MP_OBJ_NULL;
     if (n_args > 2) {
         defval = args[2];
     }
-    return mp_load_attr_default(args[0], MP_OBJ_QSTR_VALUE(attr), defval);
+    return mp_load_attr_default(args[0], mp_obj_str_get_qstr(args[1]), defval);
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mp_builtin_getattr_obj, 2, 3, mp_builtin_getattr);
+
+STATIC mp_obj_t mp_builtin_setattr(mp_obj_t base, mp_obj_t attr, mp_obj_t value) {
+    mp_store_attr(base, mp_obj_str_get_qstr(attr), value);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_3(mp_builtin_setattr_obj, mp_builtin_setattr);
 
 STATIC mp_obj_t mp_builtin_hasattr(mp_obj_t object_in, mp_obj_t attr_in) {
     assert(MP_OBJ_IS_QSTR(attr_in));
@@ -628,6 +637,7 @@ STATIC const mp_map_elem_t mp_module_builtins_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR_execfile), (mp_obj_t)&mp_builtin_execfile_obj },
 #endif
     { MP_OBJ_NEW_QSTR(MP_QSTR_getattr), (mp_obj_t)&mp_builtin_getattr_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_setattr), (mp_obj_t)&mp_builtin_setattr_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_globals), (mp_obj_t)&mp_builtin_globals_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_hasattr), (mp_obj_t)&mp_builtin_hasattr_obj },
     { MP_OBJ_NEW_QSTR(MP_QSTR_hash), (mp_obj_t)&mp_builtin_hash_obj },
@@ -673,6 +683,9 @@ STATIC const mp_map_elem_t mp_module_builtins_globals_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR_SyntaxError), (mp_obj_t)&mp_type_SyntaxError },
     { MP_OBJ_NEW_QSTR(MP_QSTR_SystemExit), (mp_obj_t)&mp_type_SystemExit },
     { MP_OBJ_NEW_QSTR(MP_QSTR_TypeError), (mp_obj_t)&mp_type_TypeError },
+    #if MICROPY_PY_BUILTINS_STR_UNICODE
+    { MP_OBJ_NEW_QSTR(MP_QSTR_UnicodeError), (mp_obj_t)&mp_type_UnicodeError },
+    #endif
     { MP_OBJ_NEW_QSTR(MP_QSTR_ValueError), (mp_obj_t)&mp_type_ValueError },
     { MP_OBJ_NEW_QSTR(MP_QSTR_ZeroDivisionError), (mp_obj_t)&mp_type_ZeroDivisionError },
     // Somehow CPython managed to have OverflowError not inherit from ValueError ;-/

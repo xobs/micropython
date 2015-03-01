@@ -42,7 +42,7 @@
 #define MICROPY_LONGINT_IMPL        (MICROPY_LONGINT_IMPL_MPZ)
 #define MICROPY_FLOAT_IMPL          (MICROPY_FLOAT_IMPL_FLOAT)
 #define MICROPY_OPT_COMPUTED_GOTO   (1)
-#define MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE (1)
+#define MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE (0)
 /* Enable FatFS LFNs
     0: Disable LFN feature.
     1: Enable LFN with static working buffer on the BSS. Always NOT reentrant.
@@ -61,6 +61,7 @@
 #define MICROPY_PY_MICROPYTHON_MEM_INFO (1)
 #define MICROPY_PY_SYS_EXIT         (1)
 #define MICROPY_PY_SYS_STDFILES     (1)
+#define MICROPY_PY_MATH_SPECIAL_FUNCTIONS (1)
 #define MICROPY_PY_CMATH            (1)
 #define MICROPY_PY_IO               (1)
 #define MICROPY_PY_IO_FILEIO        (1)
@@ -133,9 +134,9 @@ extern const struct _mp_obj_module_t mp_module_network;
     const char *readline_hist[8]; \
     \
     mp_obj_t mp_const_vcp_interrupt; \
+    mp_obj_t pyb_hid_report_desc; \
     \
     mp_obj_t pyb_config_main; \
-    mp_obj_t pyb_config_usb_mode; \
     \
     mp_obj_t pyb_switch_callback; \
     \
@@ -152,6 +153,12 @@ extern const struct _mp_obj_module_t mp_module_network;
     \
     /* pointers to all UART objects (if they have been created) */ \
     struct _pyb_uart_obj_t *pyb_uart_obj_all[6]; \
+    \
+    /* pointers to all CAN objects (if they have been created) */ \
+    struct _pyb_can_obj_t *pyb_can_obj_all[2]; \
+    \
+    /* list of registered NICs */ \
+    mp_obj_list_t mod_network_nic_list; \
 
 // type definitions for the specific machine
 

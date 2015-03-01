@@ -55,7 +55,7 @@ STATIC bool is_end(mp_lexer_t *lex) {
 }
 
 STATIC bool is_physical_newline(mp_lexer_t *lex) {
-    return lex->chr0 == '\n' || lex->chr0 == '\r';
+    return lex->chr0 == '\n';
 }
 
 STATIC bool is_char(mp_lexer_t *lex, char c) {
@@ -104,6 +104,10 @@ STATIC bool is_following_digit(mp_lexer_t *lex) {
     return unichar_isdigit(lex->chr1);
 }
 
+STATIC bool is_following_letter(mp_lexer_t *lex) {
+    return unichar_isalpha(lex->chr1);
+}
+
 STATIC bool is_following_odigit(mp_lexer_t *lex) {
     return lex->chr1 >= '0' && lex->chr1 <= '7';
 }
@@ -123,20 +127,10 @@ STATIC void next_char(mp_lexer_t *lex) {
         return;
     }
 
-    mp_uint_t advance = 1;
-
     if (lex->chr0 == '\n') {
-        // LF is a new line
+        // a new line
         ++lex->line;
         lex->column = 1;
-    } else if (lex->chr0 == '\r') {
-        // CR is a new line
-        ++lex->line;
-        lex->column = 1;
-        if (lex->chr1 == '\n') {
-            // CR LF is a single new line
-            advance = 2;
-        }
     } else if (lex->chr0 == '\t') {
         // a tab
         lex->column = (((lex->column - 1 + TAB_SIZE) / TAB_SIZE) * TAB_SIZE) + 1;
@@ -145,15 +139,26 @@ STATIC void next_char(mp_lexer_t *lex) {
         ++lex->column;
     }
 
-    for (; advance > 0; advance--) {
-        lex->chr0 = lex->chr1;
-        lex->chr1 = lex->chr2;
-        lex->chr2 = lex->stream_next_byte(lex->stream_data);
-        if (lex->chr2 == MP_LEXER_EOF) {
-            // EOF
-            if (lex->chr1 != MP_LEXER_EOF && lex->chr1 != '\n' && lex->chr1 != '\r') {
-                lex->chr2 = '\n'; // insert newline at end of file
-            }
+    lex->chr0 = lex->chr1;
+    lex->chr1 = lex->chr2;
+    lex->chr2 = lex->stream_next_byte(lex->stream_data);
+
+    if (lex->chr0 == '\r') {
+        // CR is a new line, converted to LF
+        lex->chr0 = '\n';
+        if (lex->chr1 == '\n') {
+            // CR LF is a single new line
+            lex->chr1 = lex->chr2;
+            lex->chr2 = lex->stream_next_byte(lex->stream_data);
+        }
+    }
+
+    if (lex->chr2 == MP_LEXER_EOF) {
+        // EOF, check if we need to insert a newline at end of file
+        if (lex->chr1 != MP_LEXER_EOF && lex->chr1 != '\n') {
+            // if lex->chr1 == '\r' then this makes a CR LF which will be converted to LF above
+            // otherwise it just inserts a LF
+            lex->chr2 = '\n';
         }
     }
 }
@@ -492,11 +497,19 @@ STATIC void mp_lexer_next_token_into(mp_lexer_t *lex, bool first_token) {
                         }
                     }
                     if (c != MP_LEXER_EOF) {
+                        #if MICROPY_PY_BUILTINS_STR_UNICODE
                         if (c < 0x110000 && !is_bytes) {
                             vstr_add_char(&lex->vstr, c);
                         } else if (c < 0x100 && is_bytes) {
                             vstr_add_byte(&lex->vstr, c);
-                        } else {
+                        }
+                        #else
+                        // without unicode everything is just added as an 8-bit byte
+                        if (c < 0x100) {
+                            vstr_add_byte(&lex->vstr, c);
+                        }
+                        #endif
+                        else {
                             assert(!"TODO: Throw an error, invalid escape code probably");
                         }
                     }
@@ -531,7 +544,15 @@ STATIC void mp_lexer_next_token_into(mp_lexer_t *lex, bool first_token) {
         }
 
     } else if (is_digit(lex) || (is_char(lex, '.') && is_following_digit(lex))) {
-        lex->tok_kind = MP_TOKEN_NUMBER;
+        bool forced_integer = false;
+        if (is_char(lex, '.')) {
+            lex->tok_kind = MP_TOKEN_FLOAT_OR_IMAG;
+        } else {
+            lex->tok_kind = MP_TOKEN_INTEGER;
+            if (is_char(lex, '0') && is_following_letter(lex)) {
+                forced_integer = true;
+            }
+        }
 
         // get first char
         vstr_add_char(&lex->vstr, CUR_CHAR(lex));
@@ -539,14 +560,18 @@ STATIC void mp_lexer_next_token_into(mp_lexer_t *lex, bool first_token) {
 
         // get tail chars
         while (!is_end(lex)) {
-            if (is_char_or(lex, 'e', 'E')) {
+            if (!forced_integer && is_char_or(lex, 'e', 'E')) {
+                lex->tok_kind = MP_TOKEN_FLOAT_OR_IMAG;
                 vstr_add_char(&lex->vstr, 'e');
                 next_char(lex);
                 if (is_char(lex, '+') || is_char(lex, '-')) {
                     vstr_add_char(&lex->vstr, CUR_CHAR(lex));
                     next_char(lex);
                 }
-            } else if (is_letter(lex) || is_digit(lex) || is_char_or(lex, '_', '.')) {
+            } else if (is_letter(lex) || is_digit(lex) || is_char(lex, '.')) {
+                if (is_char_or3(lex, '.', 'j', 'J')) {
+                    lex->tok_kind = MP_TOKEN_FLOAT_OR_IMAG;
+                }
                 vstr_add_char(&lex->vstr, CUR_CHAR(lex));
                 next_char(lex);
             } else {
@@ -657,7 +682,7 @@ STATIC void mp_lexer_next_token_into(mp_lexer_t *lex, bool first_token) {
         // need to check for this special token in many places in the compiler.
         // TODO improve speed of these string comparisons
         //for (mp_int_t i = 0; tok_kw[i] != NULL; i++) {
-        for (mp_int_t i = 0; i < MP_ARRAY_SIZE(tok_kw); i++) {
+        for (size_t i = 0; i < MP_ARRAY_SIZE(tok_kw); i++) {
             if (str_strn_equal(tok_kw[i], lex->vstr.buf, lex->vstr.len)) {
                 if (i == MP_ARRAY_SIZE(tok_kw) - 1) {
                     // tok_kw[MP_ARRAY_SIZE(tok_kw) - 1] == "__debug__"
@@ -713,11 +738,15 @@ mp_lexer_t *mp_lexer_new(qstr src_name, void *stream_data, mp_lexer_stream_next_
     if (lex->chr0 == MP_LEXER_EOF) {
         lex->chr0 = '\n';
     } else if (lex->chr1 == MP_LEXER_EOF) {
-        if (lex->chr0 != '\n' && lex->chr0 != '\r') {
+        if (lex->chr0 == '\r') {
+            lex->chr0 = '\n';
+        } else if (lex->chr0 != '\n') {
             lex->chr1 = '\n';
         }
     } else if (lex->chr2 == MP_LEXER_EOF) {
-        if (lex->chr1 != '\n' && lex->chr1 != '\r') {
+        if (lex->chr1 == '\r') {
+            lex->chr1 = '\n';
+        } else if (lex->chr1 != '\n') {
             lex->chr2 = '\n';
         }
     }

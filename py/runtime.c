@@ -30,7 +30,6 @@
 
 #include "py/mpstate.h"
 #include "py/nlr.h"
-#include "py/parsehelper.h"
 #include "py/parsenum.h"
 #include "py/compile.h"
 #include "py/objtuple.h"
@@ -104,67 +103,53 @@ void mp_deinit(void) {
 #endif
 }
 
-mp_obj_t mp_load_const_int(qstr qstr) {
-    DEBUG_OP_printf("load '%s'\n", qstr_str(qstr));
-    mp_uint_t len;
-    const byte* data = qstr_data(qstr, &len);
-    return mp_parse_num_integer((const char*)data, len, 0);
+mp_obj_t mp_load_const_str(qstr qst) {
+    DEBUG_OP_printf("load '%s'\n", qstr_str(qst));
+    return MP_OBJ_NEW_QSTR(qst);
 }
 
-mp_obj_t mp_load_const_dec(qstr qstr) {
-    DEBUG_OP_printf("load '%s'\n", qstr_str(qstr));
+mp_obj_t mp_load_const_bytes(qstr qst) {
+    DEBUG_OP_printf("load b'%s'\n", qstr_str(qst));
     mp_uint_t len;
-    const byte* data = qstr_data(qstr, &len);
-    return mp_parse_num_decimal((const char*)data, len, true, false);
-}
-
-mp_obj_t mp_load_const_str(qstr qstr) {
-    DEBUG_OP_printf("load '%s'\n", qstr_str(qstr));
-    return MP_OBJ_NEW_QSTR(qstr);
-}
-
-mp_obj_t mp_load_const_bytes(qstr qstr) {
-    DEBUG_OP_printf("load b'%s'\n", qstr_str(qstr));
-    mp_uint_t len;
-    const byte *data = qstr_data(qstr, &len);
+    const byte *data = qstr_data(qst, &len);
     return mp_obj_new_bytes(data, len);
 }
 
-mp_obj_t mp_load_name(qstr qstr) {
+mp_obj_t mp_load_name(qstr qst) {
     // logic: search locals, globals, builtins
-    DEBUG_OP_printf("load name %s\n", qstr_str(qstr));
+    DEBUG_OP_printf("load name %s\n", qstr_str(qst));
     // If we're at the outer scope (locals == globals), dispatch to load_global right away
     if (MP_STATE_CTX(dict_locals) != MP_STATE_CTX(dict_globals)) {
-        mp_map_elem_t *elem = mp_map_lookup(&MP_STATE_CTX(dict_locals)->map, MP_OBJ_NEW_QSTR(qstr), MP_MAP_LOOKUP);
+        mp_map_elem_t *elem = mp_map_lookup(&MP_STATE_CTX(dict_locals)->map, MP_OBJ_NEW_QSTR(qst), MP_MAP_LOOKUP);
         if (elem != NULL) {
             return elem->value;
         }
     }
-    return mp_load_global(qstr);
+    return mp_load_global(qst);
 }
 
-mp_obj_t mp_load_global(qstr qstr) {
+mp_obj_t mp_load_global(qstr qst) {
     // logic: search globals, builtins
-    DEBUG_OP_printf("load global %s\n", qstr_str(qstr));
-    mp_map_elem_t *elem = mp_map_lookup(&MP_STATE_CTX(dict_globals)->map, MP_OBJ_NEW_QSTR(qstr), MP_MAP_LOOKUP);
+    DEBUG_OP_printf("load global %s\n", qstr_str(qst));
+    mp_map_elem_t *elem = mp_map_lookup(&MP_STATE_CTX(dict_globals)->map, MP_OBJ_NEW_QSTR(qst), MP_MAP_LOOKUP);
     if (elem == NULL) {
         #if MICROPY_CAN_OVERRIDE_BUILTINS
         if (MP_STATE_VM(mp_module_builtins_override_dict) != NULL) {
             // lookup in additional dynamic table of builtins first
-            elem = mp_map_lookup(&MP_STATE_VM(mp_module_builtins_override_dict)->map, MP_OBJ_NEW_QSTR(qstr), MP_MAP_LOOKUP);
+            elem = mp_map_lookup(&MP_STATE_VM(mp_module_builtins_override_dict)->map, MP_OBJ_NEW_QSTR(qst), MP_MAP_LOOKUP);
             if (elem != NULL) {
                 return elem->value;
             }
         }
         #endif
-        elem = mp_map_lookup((mp_map_t*)&mp_module_builtins_globals.map, MP_OBJ_NEW_QSTR(qstr), MP_MAP_LOOKUP);
+        elem = mp_map_lookup((mp_map_t*)&mp_module_builtins_globals.map, MP_OBJ_NEW_QSTR(qst), MP_MAP_LOOKUP);
         if (elem == NULL) {
             if (MICROPY_ERROR_REPORTING == MICROPY_ERROR_REPORTING_TERSE) {
                 nlr_raise(mp_obj_new_exception_msg(&mp_type_NameError,
                     "name not defined"));
             } else {
                 nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_NameError,
-                    "name '%s' is not defined", qstr_str(qstr)));
+                    "name '%s' is not defined", qstr_str(qst)));
             }
         }
     }
@@ -185,26 +170,26 @@ mp_obj_t mp_load_build_class(void) {
     return (mp_obj_t)&mp_builtin___build_class___obj;
 }
 
-void mp_store_name(qstr qstr, mp_obj_t obj) {
-    DEBUG_OP_printf("store name %s <- %p\n", qstr_str(qstr), obj);
-    mp_obj_dict_store(MP_STATE_CTX(dict_locals), MP_OBJ_NEW_QSTR(qstr), obj);
+void mp_store_name(qstr qst, mp_obj_t obj) {
+    DEBUG_OP_printf("store name %s <- %p\n", qstr_str(qst), obj);
+    mp_obj_dict_store(MP_STATE_CTX(dict_locals), MP_OBJ_NEW_QSTR(qst), obj);
 }
 
-void mp_delete_name(qstr qstr) {
-    DEBUG_OP_printf("delete name %s\n", qstr_str(qstr));
-    // TODO convert KeyError to NameError if qstr not found
-    mp_obj_dict_delete(MP_STATE_CTX(dict_locals), MP_OBJ_NEW_QSTR(qstr));
+void mp_delete_name(qstr qst) {
+    DEBUG_OP_printf("delete name %s\n", qstr_str(qst));
+    // TODO convert KeyError to NameError if qst not found
+    mp_obj_dict_delete(MP_STATE_CTX(dict_locals), MP_OBJ_NEW_QSTR(qst));
 }
 
-void mp_store_global(qstr qstr, mp_obj_t obj) {
-    DEBUG_OP_printf("store global %s <- %p\n", qstr_str(qstr), obj);
-    mp_obj_dict_store(MP_STATE_CTX(dict_globals), MP_OBJ_NEW_QSTR(qstr), obj);
+void mp_store_global(qstr qst, mp_obj_t obj) {
+    DEBUG_OP_printf("store global %s <- %p\n", qstr_str(qst), obj);
+    mp_obj_dict_store(MP_STATE_CTX(dict_globals), MP_OBJ_NEW_QSTR(qst), obj);
 }
 
-void mp_delete_global(qstr qstr) {
-    DEBUG_OP_printf("delete global %s\n", qstr_str(qstr));
-    // TODO convert KeyError to NameError if qstr not found
-    mp_obj_dict_delete(MP_STATE_CTX(dict_globals), MP_OBJ_NEW_QSTR(qstr));
+void mp_delete_global(qstr qst) {
+    DEBUG_OP_printf("delete global %s\n", qstr_str(qst));
+    // TODO convert KeyError to NameError if qst not found
+    mp_obj_dict_delete(MP_STATE_CTX(dict_globals), MP_OBJ_NEW_QSTR(qst));
 }
 
 mp_obj_t mp_unary_op(mp_uint_t op, mp_obj_t arg) {
@@ -242,10 +227,9 @@ mp_obj_t mp_unary_op(mp_uint_t op, mp_obj_t arg) {
             nlr_raise(mp_obj_new_exception_msg(&mp_type_TypeError,
                 "unsupported type for operator"));
         } else {
-            // TODO specify in error message what the operator is
             nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_TypeError,
-                "bad operand type for unary operator: '%s'",
-                mp_obj_get_type_str(arg)));
+                "unsupported type for %s: '%s'",
+                qstr_str(mp_unary_op_method_name[op]), mp_obj_get_type_str(arg)));
         }
     }
 }
@@ -334,7 +318,7 @@ mp_obj_t mp_binary_op(mp_uint_t op, mp_obj_t lhs, mp_obj_t rhs) {
                     if (rhs_val < 0) {
                         // negative shift not allowed
                         nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "negative shift count"));
-                    } else if (rhs_val >= BITS_PER_WORD || lhs_val > (MP_SMALL_INT_MAX >> rhs_val) || lhs_val < (MP_SMALL_INT_MIN >> rhs_val)) {
+                    } else if (rhs_val >= (mp_int_t)BITS_PER_WORD || lhs_val > (MP_SMALL_INT_MAX >> rhs_val) || lhs_val < (MP_SMALL_INT_MIN >> rhs_val)) {
                         // left-shift will overflow, so use higher precision integer
                         lhs = mp_obj_new_int_from_ll(lhs_val);
                         goto generic_binary_op;
@@ -351,7 +335,7 @@ mp_obj_t mp_binary_op(mp_uint_t op, mp_obj_t lhs, mp_obj_t rhs) {
                         nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "negative shift count"));
                     } else {
                         // standard precision is enough for right-shift
-                        if (rhs_val >= BITS_PER_WORD) {
+                        if (rhs_val >= (mp_int_t)BITS_PER_WORD) {
                             // Shifting to big amounts is underfined behavior
                             // in C and is CPU-dependent; propagate sign bit.
                             rhs_val = BITS_PER_WORD - 1;
@@ -537,10 +521,9 @@ unsupported_op:
         nlr_raise(mp_obj_new_exception_msg(&mp_type_TypeError,
             "unsupported type for operator"));
     } else {
-        // TODO specify in error message what the operator is
         nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_TypeError,
-            "unsupported operand types for binary operator: '%s', '%s'",
-            mp_obj_get_type_str(lhs), mp_obj_get_type_str(rhs)));
+            "unsupported types for %s: '%s', '%s'",
+            qstr_str(mp_binary_op_method_name[op]), mp_obj_get_type_str(lhs), mp_obj_get_type_str(rhs)));
     }
 
 zero_division:
@@ -974,37 +957,31 @@ void mp_store_attr(mp_obj_t base, qstr attr, mp_obj_t value) {
 
 mp_obj_t mp_getiter(mp_obj_t o_in) {
     assert(o_in);
+
+    // check for native getiter (corresponds to __iter__)
     mp_obj_type_t *type = mp_obj_get_type(o_in);
     if (type->getiter != NULL) {
         mp_obj_t iter = type->getiter(o_in);
-        if (iter == MP_OBJ_NULL) {
-            goto not_iterable;
+        if (iter != MP_OBJ_NULL) {
+            return iter;
         }
-        return iter;
+    }
+
+    // check for __getitem__
+    mp_obj_t dest[2];
+    mp_load_method_maybe(o_in, MP_QSTR___getitem__, dest);
+    if (dest[0] != MP_OBJ_NULL) {
+        // __getitem__ exists, create and return an iterator
+        return mp_obj_new_getitem_iter(dest);
+    }
+
+    // object not iterable
+    if (MICROPY_ERROR_REPORTING == MICROPY_ERROR_REPORTING_TERSE) {
+        nlr_raise(mp_obj_new_exception_msg(&mp_type_TypeError,
+            "object not iterable"));
     } else {
-        // check for __iter__ method
-        mp_obj_t dest[2];
-        mp_load_method_maybe(o_in, MP_QSTR___iter__, dest);
-        if (dest[0] != MP_OBJ_NULL) {
-            // __iter__ exists, call it and return its result
-            return mp_call_method_n_kw(0, 0, dest);
-        } else {
-            mp_load_method_maybe(o_in, MP_QSTR___getitem__, dest);
-            if (dest[0] != MP_OBJ_NULL) {
-                // __getitem__ exists, create an iterator
-                return mp_obj_new_getitem_iter(dest);
-            } else {
-                // object not iterable
-not_iterable:
-                if (MICROPY_ERROR_REPORTING == MICROPY_ERROR_REPORTING_TERSE) {
-                    nlr_raise(mp_obj_new_exception_msg(&mp_type_TypeError,
-                        "object not iterable"));
-                } else {
-                    nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_TypeError,
-                        "'%s' object is not iterable", mp_obj_get_type_str(o_in)));
-                }
-            }
-        }
+        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_TypeError,
+            "'%s' object is not iterable", mp_obj_get_type_str(o_in)));
     }
 }
 
@@ -1230,47 +1207,30 @@ void mp_import_all(mp_obj_t module) {
 
 // this is implemented in this file so it can optimise access to locals/globals
 mp_obj_t mp_parse_compile_execute(mp_lexer_t *lex, mp_parse_input_kind_t parse_input_kind, mp_obj_dict_t *globals, mp_obj_dict_t *locals) {
-    // parse the string
-    mp_parse_error_kind_t parse_error_kind;
-    mp_parse_node_t pn = mp_parse(lex, parse_input_kind, &parse_error_kind);
+    // save context
+    mp_obj_dict_t *volatile old_globals = mp_globals_get();
+    mp_obj_dict_t *volatile old_locals = mp_locals_get();
 
-    if (pn == MP_PARSE_NODE_NULL) {
-        // parse error; raise exception
-        mp_obj_t exc = mp_parse_make_exception(lex, parse_error_kind);
-        mp_lexer_free(lex);
-        nlr_raise(exc);
-    }
-
-    qstr source_name = lex->source_name;
-    mp_lexer_free(lex);
-
-    // save context and set new context
-    mp_obj_dict_t *old_globals = mp_globals_get();
-    mp_obj_dict_t *old_locals = mp_locals_get();
+    // set new context
     mp_globals_set(globals);
     mp_locals_set(locals);
 
-    // compile the string
-    mp_obj_t module_fun = mp_compile(pn, source_name, MP_EMIT_OPT_NONE, false);
-
-    // check if there was a compile error
-    if (mp_obj_is_exception_instance(module_fun)) {
-        mp_globals_set(old_globals);
-        mp_locals_set(old_locals);
-        nlr_raise(module_fun);
-    }
-
-    // for compile only
-    if (MICROPY_PY_BUILTINS_COMPILE && globals == NULL) {
-        mp_globals_set(old_globals);
-        mp_locals_set(old_locals);
-        return module_fun;
-    }
-
-    // complied successfully, execute it
     nlr_buf_t nlr;
     if (nlr_push(&nlr) == 0) {
-        mp_obj_t ret = mp_call_function_0(module_fun);
+        qstr source_name = lex->source_name;
+        mp_parse_node_t pn = mp_parse(lex, parse_input_kind);
+        mp_obj_t module_fun = mp_compile(pn, source_name, MP_EMIT_OPT_NONE, false);
+
+        mp_obj_t ret;
+        if (MICROPY_PY_BUILTINS_COMPILE && globals == NULL) {
+            // for compile only, return value is the module function
+            ret = module_fun;
+        } else {
+            // execute module function and get return value
+            ret = mp_call_function_0(module_fun);
+        }
+
+        // finish nlr block, restore context and return value
         nlr_pop();
         mp_globals_set(old_globals);
         mp_locals_set(old_locals);

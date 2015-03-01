@@ -75,6 +75,8 @@ STATIC mp_obj_t code_execute(mp_obj_code_t *self, mp_obj_t globals, mp_obj_t loc
 }
 
 STATIC mp_obj_t mp_builtin_compile(mp_uint_t n_args, const mp_obj_t *args) {
+    (void)n_args;
+
     // get the source
     mp_uint_t str_len;
     const char *str = mp_obj_str_get_data(args[0], &str_len);
@@ -132,6 +134,9 @@ STATIC mp_obj_t eval_exec_helper(mp_uint_t n_args, const mp_obj_t *args, mp_pars
     mp_lexer_t *lex;
     if (MICROPY_PY_BUILTINS_EXECFILE && parse_input_kind == MP_PARSE_SINGLE_INPUT) {
         lex = mp_lexer_new_from_file(str);
+        if (lex == NULL) {
+            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_OSError, "could not open file '%s'", str));
+        }
         parse_input_kind = MP_PARSE_FILE_INPUT;
     } else {
         lex = mp_lexer_new_from_str_len(MP_QSTR__lt_string_gt_, str, str_len, 0);

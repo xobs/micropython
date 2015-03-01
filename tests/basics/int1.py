@@ -1,3 +1,6 @@
+print(int(False))
+print(int(True))
+
 print(int(0))
 print(int(1))
 print(int(+1))
@@ -75,3 +78,6 @@ test('0b2', 2)
 test('0o8', 8)
 test('0xg', 16)
 test('1 1', 16)
+
+# check that we don't parse this as a floating point number
+print(0x1e+1)

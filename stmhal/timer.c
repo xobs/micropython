@@ -648,16 +648,16 @@ STATIC mp_obj_t pyb_timer_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t
         default: nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError, "Timer %d does not exist", tim->tim_id));
     }
 
+    // set the global variable for interrupt callbacks
+    if (tim->tim_id - 1 < PYB_TIMER_OBJ_ALL_NUM) {
+        MP_STATE_PORT(pyb_timer_obj_all)[tim->tim_id - 1] = tim;
+    }
+
     if (n_args > 1 || n_kw > 0) {
         // start the peripheral
         mp_map_t kw_args;
         mp_map_init_fixed_table(&kw_args, n_kw, args + n_args);
         pyb_timer_init_helper(tim, n_args - 1, args + 1, &kw_args);
-    }
-
-    // set the global variable for interrupt callbacks
-    if (tim->tim_id - 1 < PYB_TIMER_OBJ_ALL_NUM) {
-        MP_STATE_PORT(pyb_timer_obj_all)[tim->tim_id - 1] = tim;
     }
 
     return (mp_obj_t)tim;
@@ -668,12 +668,7 @@ STATIC mp_obj_t pyb_timer_init(mp_uint_t n_args, const mp_obj_t *args, mp_map_t 
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_timer_init_obj, 1, pyb_timer_init);
 
-/// \method deinit()
-/// Deinitialises the timer.
-///
-/// Disables the callback (and the associated irq).
-/// Disables any channel callbacks (and the associated irq).
-/// Stops the timer, and disables the timer peripheral.
+// timer.deinit()
 STATIC mp_obj_t pyb_timer_deinit(mp_obj_t self_in) {
     pyb_timer_obj_t *self = self_in;
 
@@ -691,7 +686,10 @@ STATIC mp_obj_t pyb_timer_deinit(mp_obj_t self_in) {
         prev_chan->next = NULL;
     }
 
-    HAL_TIM_Base_DeInit(&self->tim);
+    self->tim.State = HAL_TIM_STATE_RESET;
+    self->tim.Instance->CCER = 0x0000; // disable all capture/compare outputs
+    self->tim.Instance->CR1 = 0x0000; // disable the timer and reset its state
+
     return mp_const_none;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_timer_deinit_obj, pyb_timer_deinit);
@@ -1046,9 +1044,9 @@ STATIC mp_obj_t pyb_timer_callback(mp_obj_t self_in, mp_obj_t callback) {
         self->callback = mp_const_none;
     } else if (mp_obj_is_callable(callback)) {
         self->callback = callback;
-        HAL_NVIC_EnableIRQ(self->irqn);
         // start timer, so that it interrupts on overflow
         HAL_TIM_Base_Start_IT(&self->tim);
+        HAL_NVIC_EnableIRQ(self->irqn);
     } else {
         nlr_raise(mp_obj_new_exception_msg(&mp_type_ValueError, "callback must be None or a callable object"));
     }

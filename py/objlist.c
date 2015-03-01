@@ -31,6 +31,7 @@
 #include "py/objlist.h"
 #include "py/runtime0.h"
 #include "py/runtime.h"
+#include "py/stackctrl.h"
 
 STATIC mp_obj_t mp_obj_new_list_iterator(mp_obj_list_t *list, mp_uint_t cur);
 STATIC mp_obj_list_t *list_new(mp_uint_t n);
@@ -68,6 +69,7 @@ STATIC mp_obj_t list_extend_from_iter(mp_obj_t list, mp_obj_t iterable) {
 }
 
 STATIC mp_obj_t list_make_new(mp_obj_t type_in, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *args) {
+    (void)type_in;
     mp_arg_check_num(n_args, n_kw, 0, 1, false);
 
     switch (n_args) {
@@ -163,7 +165,7 @@ STATIC mp_obj_t list_subscr(mp_obj_t self_in, mp_obj_t index, mp_obj_t value) {
             mp_int_t len_adj = slice.start - slice.stop;
             //printf("Len adj: %d\n", len_adj);
             assert(len_adj <= 0);
-            mp_seq_replace_slice_no_grow(self->items, self->len, slice.start, slice.stop, self->items/*NULL*/, 0, mp_obj_t);
+            mp_seq_replace_slice_no_grow(self->items, self->len, slice.start, slice.stop, self->items/*NULL*/, 0, sizeof(*self->items));
             // Clear "freed" elements at the end of list
             mp_seq_clear(self->items, self->len + len_adj, self->len, sizeof(*self->items));
             self->len += len_adj;
@@ -209,10 +211,10 @@ STATIC mp_obj_t list_subscr(mp_obj_t self_in, mp_obj_t index, mp_obj_t value) {
                     self->alloc = self->len + len_adj;
                 }
                 mp_seq_replace_slice_grow_inplace(self->items, self->len,
-                    slice_out.start, slice_out.stop, slice->items, slice->len, len_adj, mp_obj_t);
+                    slice_out.start, slice_out.stop, slice->items, slice->len, len_adj, sizeof(*self->items));
             } else {
                 mp_seq_replace_slice_no_grow(self->items, self->len,
-                    slice_out.start, slice_out.stop, slice->items, slice->len, mp_obj_t);
+                    slice_out.start, slice_out.stop, slice->items, slice->len, sizeof(*self->items));
                 // Clear "freed" elements at the end of list
                 mp_seq_clear(self->items, self->len + len_adj, self->len, sizeof(*self->items));
                 // TODO: apply allocation policy re: alloc_size
@@ -283,16 +285,15 @@ STATIC mp_obj_t list_pop(mp_uint_t n_args, const mp_obj_t *args) {
     return ret;
 }
 
-// TODO make this conform to CPython's definition of sort
-STATIC void mp_quicksort(mp_obj_t *head, mp_obj_t *tail, mp_obj_t key_fn, bool reversed) {
-    mp_uint_t op = reversed ? MP_BINARY_OP_MORE : MP_BINARY_OP_LESS;
+STATIC void mp_quicksort(mp_obj_t *head, mp_obj_t *tail, mp_obj_t key_fn, mp_obj_t binop_less_result) {
+    MP_STACK_CHECK();
     while (head < tail) {
         mp_obj_t *h = head - 1;
         mp_obj_t *t = tail;
-        mp_obj_t v = key_fn == NULL ? tail[0] : mp_call_function_1(key_fn, tail[0]); // get pivot using key_fn
+        mp_obj_t v = key_fn == MP_OBJ_NULL ? tail[0] : mp_call_function_1(key_fn, tail[0]); // get pivot using key_fn
         for (;;) {
-            do ++h; while (mp_binary_op(op, key_fn == NULL ? h[0] : mp_call_function_1(key_fn, h[0]), v) == mp_const_true);
-            do --t; while (h < t && mp_binary_op(op, v, key_fn == NULL ? t[0] : mp_call_function_1(key_fn, t[0])) == mp_const_true);
+            do ++h; while (h < t && mp_binary_op(MP_BINARY_OP_LESS, key_fn == MP_OBJ_NULL ? h[0] : mp_call_function_1(key_fn, h[0]), v) == binop_less_result);
+            do --t; while (h < t && mp_binary_op(MP_BINARY_OP_LESS, v, key_fn == MP_OBJ_NULL ? t[0] : mp_call_function_1(key_fn, t[0])) == binop_less_result);
             if (h >= t) break;
             mp_obj_t x = h[0];
             h[0] = t[0];
@@ -301,27 +302,38 @@ STATIC void mp_quicksort(mp_obj_t *head, mp_obj_t *tail, mp_obj_t key_fn, bool r
         mp_obj_t x = h[0];
         h[0] = tail[0];
         tail[0] = x;
-        mp_quicksort(head, t, key_fn, reversed);
-        head = h + 1;
+        // do the smaller recursive call first, to keep stack within O(log(N))
+        if (t - head < tail - h - 1) {
+            mp_quicksort(head, t, key_fn, binop_less_result);
+            head = h + 1;
+        } else {
+            mp_quicksort(h + 1, tail, key_fn, binop_less_result);
+            tail = t;
+        }
     }
 }
 
-mp_obj_t mp_obj_list_sort(mp_uint_t n_args, const mp_obj_t *args, mp_map_t *kwargs) {
-    assert(n_args >= 1);
-    assert(MP_OBJ_IS_TYPE(args[0], &mp_type_list));
-    if (n_args > 1) {
-        nlr_raise(mp_obj_new_exception_msg(&mp_type_TypeError,
-                                          "list.sort takes no positional arguments"));
-    }
-    mp_obj_list_t *self = args[0];
+// TODO Python defines sort to be stable but ours is not
+mp_obj_t mp_obj_list_sort(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    static const mp_arg_t allowed_args[] = {
+        { MP_QSTR_key, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = mp_const_none} },
+        { MP_QSTR_reverse, MP_ARG_KW_ONLY | MP_ARG_BOOL, {.u_bool = false} },
+    };
+
+    // parse args
+    mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
+    mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
+
+    mp_obj_list_t *self = pos_args[0];
+    assert(MP_OBJ_IS_TYPE(self, &mp_type_list));
+
     if (self->len > 1) {
-        mp_map_elem_t *keyfun = mp_map_lookup(kwargs, MP_OBJ_NEW_QSTR(MP_QSTR_key), MP_MAP_LOOKUP);
-        mp_map_elem_t *reverse = mp_map_lookup(kwargs, MP_OBJ_NEW_QSTR(MP_QSTR_reverse), MP_MAP_LOOKUP);
         mp_quicksort(self->items, self->items + self->len - 1,
-                     keyfun ? keyfun->value : NULL,
-                     reverse && reverse->value ? mp_obj_is_true(reverse->value) : false);
+                     args[0].u_obj == mp_const_none ? MP_OBJ_NULL : args[0].u_obj,
+                     args[1].u_bool ? mp_const_false : mp_const_true);
     }
-    return mp_const_none; // return None, as per CPython
+
+    return mp_const_none;
 }
 
 STATIC mp_obj_t list_clear(mp_obj_t self_in) {
@@ -364,7 +376,7 @@ STATIC mp_obj_t list_insert(mp_obj_t self_in, mp_obj_t idx, mp_obj_t obj) {
     if (index < 0) {
          index = 0;
     }
-    if (index > self->len) {
+    if ((mp_uint_t)index > self->len) {
          index = self->len;
     }
 
@@ -378,7 +390,7 @@ STATIC mp_obj_t list_insert(mp_obj_t self_in, mp_obj_t idx, mp_obj_t obj) {
     return mp_const_none;
 }
 
-STATIC mp_obj_t list_remove(mp_obj_t self_in, mp_obj_t value) {
+mp_obj_t mp_obj_list_remove(mp_obj_t self_in, mp_obj_t value) {
     assert(MP_OBJ_IS_TYPE(self_in, &mp_type_list));
     mp_obj_t args[] = {self_in, value};
     args[1] = list_index(2, args);
@@ -409,9 +421,9 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_2(list_count_obj, list_count);
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(list_index_obj, 2, 4, list_index);
 STATIC MP_DEFINE_CONST_FUN_OBJ_3(list_insert_obj, list_insert);
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(list_pop_obj, 1, 2, list_pop);
-STATIC MP_DEFINE_CONST_FUN_OBJ_2(list_remove_obj, list_remove);
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(list_remove_obj, mp_obj_list_remove);
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(list_reverse_obj, list_reverse);
-STATIC MP_DEFINE_CONST_FUN_OBJ_KW(list_sort_obj, 0, mp_obj_list_sort);
+STATIC MP_DEFINE_CONST_FUN_OBJ_KW(list_sort_obj, 1, mp_obj_list_sort);
 
 STATIC const mp_map_elem_t list_locals_dict_table[] = {
     { MP_OBJ_NEW_QSTR(MP_QSTR_append), (mp_obj_t)&list_append_obj },

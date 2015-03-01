@@ -38,7 +38,7 @@ To check if there is anything to be read, use::
 
     uart.any()               # returns True if any characters waiting
 
-*Note:* The stream functions ``read``, ``write`` etc Are new in Micro Python since v1.3.4.
+*Note:* The stream functions ``read``, ``write``, etc. are new in Micro Python v1.3.4.
 Earlier versions use ``uart.send`` and ``uart.recv``.
 
 Constructors
@@ -74,6 +74,13 @@ Methods
      - ``timeout`` is the timeout in milliseconds to wait for the first character.
      - ``timeout_char`` is the timeout in milliseconds to wait between characters.
      - ``read_buf_len`` is the character length of the read buffer (0 to disable).
+
+   This method will raise an exception if the baudrate could not be set within
+   5% of the desired value.  The minimum baudrate is dictated by the frequency
+   of the bus that the UART is on; UART(1) and UART(6) are APB2, the rest are on
+   APB1.  The default bus frequencies give a minimum baudrate of 1300 for
+   UART(1) and UART(6) and 650 for the others.  Use :func:`pyb.freq <pyb.freq>`
+   to reduce the bus frequencies to get lower baudrates.
 
    *Note:* with parity=None, only 8 and 9 bits are supported.  With parity enabled,
    only 7 and 8 bits are supported.
@@ -133,4 +140,10 @@ Methods
 .. method:: uart.writechar(char)
 
    Write a single character on the bus.  ``char`` is an integer to write.
+   Return value: ``None``.
+
+.. method:: uart.sendbreak()
+
+   Send a break condition on the bus.  This drives the bus low for a duration
+   of 13 bits.
    Return value: ``None``.

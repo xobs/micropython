@@ -10,6 +10,18 @@ static volatile uint8_t usb_rx_fifo[64];
 static volatile uint8_t usb_rx_fifo_rd;
 static volatile uint8_t usb_rx_fifo_wr;
 
+static volatile int have_new_address;
+static volatile uint8_t new_address;
+
+// Firmware versions < 1.9 didn't have usb_address_write()
+static inline void usb_set_address_wrapper(uint8_t address) {
+    if (version_major_read() < 1)
+        return;
+    if (version_minor_read() < 9)
+        return;
+    usb_address_write(address);
+}
+
 // Note that our PIDs are only bits 2 and 3 of the token,
 // since all other bits are effectively redundant at this point.
 enum USB_PID {
@@ -38,6 +50,7 @@ void usb_disconnect(void) {
 
 void usb_connect(void) {
 
+    usb_address_write(0);
     usb_ep_0_out_ev_pending_write(usb_ep_0_out_ev_enable_read());
     usb_ep_0_in_ev_pending_write(usb_ep_0_in_ev_pending_read());
     usb_ep_0_out_ev_enable_write(USB_EV_PACKET | USB_EV_ERROR);
@@ -198,6 +211,10 @@ void usb_isr(void) {
     if (ep_pending) {
         usb_ep_0_in_respond_write(EPF_NAK);
         usb_ep_0_in_ev_pending_write(ep_pending);
+        if (have_new_address) {
+            have_new_address = 0;
+            usb_address_write(new_address);
+        }
         process_tx();
     }
 
@@ -322,6 +339,11 @@ int usb_recv(void *buffer, unsigned int buffer_len) {
         }
     }
     return 0;
+}
+
+void usb_set_address(uint8_t new_address_) {
+    new_address = new_address_;
+    have_new_address = 1;
 }
 
 __attribute__((section(".ramtext")))

@@ -46,11 +46,12 @@ void usb_disconnect(void) {
     usb_ep_0_in_ev_enable_write(0);
     irq_setmask(irq_getmask() & ~(1 << USB_INTERRUPT));
     usb_pullup_out_write(0);
+    usb_set_address_wrapper(0);
 }
 
 void usb_connect(void) {
 
-    usb_address_write(0);
+    usb_set_address_wrapper(0);
     usb_ep_0_out_ev_pending_write(usb_ep_0_out_ev_enable_read());
     usb_ep_0_in_ev_pending_write(usb_ep_0_in_ev_pending_read());
     usb_ep_0_out_ev_enable_write(USB_EV_PACKET | USB_EV_ERROR);
@@ -213,7 +214,7 @@ void usb_isr(void) {
         usb_ep_0_in_ev_pending_write(ep_pending);
         if (have_new_address) {
             have_new_address = 0;
-            usb_address_write(new_address);
+            usb_set_address_wrapper(new_address);
         }
         process_tx();
     }

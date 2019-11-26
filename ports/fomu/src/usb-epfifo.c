@@ -12,6 +12,7 @@ static volatile uint8_t usb_rx_fifo_wr;
 
 static volatile int have_new_address;
 static volatile uint8_t new_address;
+void epfifo_usb_poll(void);
 
 // Firmware versions < 1.9 didn't have usb_address_write()
 static inline void usb_set_address_wrapper(uint8_t address) {
@@ -41,7 +42,7 @@ enum epfifo_response {
 #define USB_EV_ERROR 1
 #define USB_EV_PACKET 2
 
-void usb_disconnect(void) {
+void epfifo_usb_disconnect(void) {
     usb_ep_0_out_ev_enable_write(0);
     usb_ep_0_in_ev_enable_write(0);
     irq_setmask(irq_getmask() & ~(1 << USB_INTERRUPT));
@@ -49,7 +50,7 @@ void usb_disconnect(void) {
     usb_set_address_wrapper(0);
 }
 
-void usb_connect(void) {
+void epfifo_usb_connect(void) {
 
     usb_set_address_wrapper(0);
     usb_ep_0_out_ev_pending_write(usb_ep_0_out_ev_enable_read());
@@ -79,7 +80,7 @@ void usb_connect(void) {
 	irq_setmask(irq_getmask() | (1 << USB_INTERRUPT));
 }
 
-void usb_init(void) {
+void epfifo_usb_init(void) {
     usb_pullup_out_write(0);
     return;
 }
@@ -151,7 +152,7 @@ static void process_tx(void) {
     return;
 }
 
-int usb_send(const void *data, int total_count) {
+void epfifo_usb_send(const void *data, int total_count) {
 
     while ((current_length || current_data))// && usb_ep_0_in_respond_read() != EPF_NAK)
         ;
@@ -160,20 +161,59 @@ int usb_send(const void *data, int total_count) {
     data_offset = 0;
     data_to_send = 0;
     process_tx();
-
-    return 0;
 }
 
-int usb_wait_for_send_done(void) {
+int epfifo_usb_wait_for_send_done(void) {
     while (current_data && current_length)
-        usb_poll();
+        epfifo_usb_poll();
     while ((usb_ep_0_in_dtb_read() & 1) == 1)
-        usb_poll();
+        epfifo_usb_poll();
     return 0;
 }
 
 __attribute__((section(".ramtext")))
-void usb_isr(void) {
+static void process_rx(void) {
+    uint8_t last_tok = usb_ep_0_out_last_tok_read();
+    
+    int byte_count = 0;
+    usb_ep0out_last_tok[usb_ep0out_wr_ptr] = last_tok;
+    volatile uint8_t * obuf = usb_ep0out_buffer[usb_ep0out_wr_ptr];
+    while (!usb_ep_0_out_obuf_empty_read()) {
+        obuf[byte_count++] = usb_ep_0_out_obuf_head_read();
+        usb_ep_0_out_obuf_head_write(0);
+    }
+
+    if (last_tok == USB_PID_SETUP) {
+        usb_ep_0_in_dtb_write(1);
+        data_offset = 0;
+        current_length = 0;
+        current_data = NULL;
+        if (byte_count == 10) {
+            const struct usb_setup_request *request = (const struct usb_setup_request *)obuf;
+            usb_setup(request);
+        }
+        else {
+            // HACK: With epfifo, we don't know where a packet boundary is
+            // between SETUP and OUT.  This causes problems when we send
+            // an OUT response and the host immediately sends a new
+            // SETUP packet, because then it looks like we have a SETUP
+            // packet that's longer than usual.
+            // As a complete and total hack, set the response to these to
+            // ACK, which seems to make the host happy in all cases that
+            // I've encountered so far.  This is only for legacy users,
+            // and only for this particular endpoint interface.
+            usb_ep_0_in_respond_write(EPF_ACK);
+            usb_ep_0_out_respond_write(EPF_ACK);
+        }
+    }
+    else {
+        usb_ep0out_buffer_len[usb_ep0out_wr_ptr] = byte_count - 2 /* Strip off CRC16 */;
+        usb_ep0out_wr_ptr = (usb_ep0out_wr_ptr + 1) & (EP0OUT_BUFFERS-1);
+    }
+}
+
+__attribute__((section(".ramtext")))
+void epfifo_usb_isr(void) {
     uint8_t ep_pending;
     
     ep_pending = usb_ep_0_out_ev_pending_read();
@@ -181,28 +221,7 @@ void usb_isr(void) {
     // We got an OUT or a SETUP packet.  Copy it to usb_ep0out_buffer
     // and clear the "pending" bit.
     if (ep_pending) {
-        uint8_t last_tok = usb_ep_0_out_last_tok_read();
-        
-        int byte_count = 0;
-        usb_ep0out_last_tok[usb_ep0out_wr_ptr] = last_tok;
-        volatile uint8_t * obuf = usb_ep0out_buffer[usb_ep0out_wr_ptr];
-        while (!usb_ep_0_out_obuf_empty_read()) {
-            obuf[byte_count++] = usb_ep_0_out_obuf_head_read();
-            usb_ep_0_out_obuf_head_write(0);
-        }
-
-        if (last_tok == USB_PID_SETUP) {
-            usb_ep_0_in_dtb_write(1);
-            data_offset = 0;
-            current_length = 0;
-            current_data = NULL;
-            const struct usb_setup_request *request = (const struct usb_setup_request *)obuf;
-            usb_setup(request);
-        }
-        else {
-            usb_ep0out_buffer_len[usb_ep0out_wr_ptr] = byte_count - 2 /* Strip off CRC16 */;
-            usb_ep0out_wr_ptr = (usb_ep0out_wr_ptr + 1) & (EP0OUT_BUFFERS-1);
-        }
+        process_rx();
         usb_ep_0_out_ev_pending_write(ep_pending);
         usb_ep_0_out_respond_write(EPF_ACK);
     }
@@ -249,7 +268,7 @@ void usb_isr(void) {
 }
 
 __attribute__((section(".ramtext")))
-int usb_getc(void) {
+int epfifo_usb_getc(void) {
     if (usb_rx_fifo_rd == usb_rx_fifo_wr) {
         usb_ep_2_out_respond_write(EPF_ACK);
         return -1;
@@ -258,14 +277,14 @@ int usb_getc(void) {
 }
 
 __attribute__((section(".ramtext")))
-void usb_putc(char c) {
+void epfifo_usb_putc(char c) {
     usb_ep_2_in_ibuf_head_write(c);
     ep2_fifo_bytes++;
     usb_ep_2_in_respond_write(EPF_ACK);
 }
 
 __attribute__((section(".ramtext")))
-int usb_write(const char *buf, int count) {
+int epfifo_usb_write(const char *buf, int count) {
     int to_write = 64;
     int i;
     if (to_write > count)
@@ -281,7 +300,7 @@ int usb_write(const char *buf, int count) {
 extern volatile uint8_t terminal_is_connected;
 
 __attribute__((section(".ramtext")))
-int usb_can_getc(void) {
+int epfifo_usb_can_getc(void) {
     if (usb_rx_fifo_rd == usb_rx_fifo_wr) {
         usb_ep_2_out_respond_write(EPF_ACK);
         return 0;
@@ -290,20 +309,22 @@ int usb_can_getc(void) {
 }
 
 __attribute__((section(".ramtext")))
-int usb_can_putc(void) {
+int epfifo_usb_can_putc(void) {
     return terminal_is_connected && usb_ep_2_in_ibuf_empty_read() && (usb_ep_2_in_respond_read() == EPF_NAK);// (ep2_fifo_bytes <= 60);
 }
 
 __attribute__((section(".ramtext")))
-void usb_ack_in(void) {
+void epfifo_usb_ack_in(uint8_t epno) {
+    (void)epno;
     // usb_ep_0_in_dtb_write(1);
-    while (usb_ep_0_in_respond_read() == EPF_ACK)
-        ;
+    // while (usb_ep_0_in_respond_read() == EPF_ACK)
+    //     ;
     usb_ep_0_in_respond_write(EPF_ACK);
 }
 
 __attribute__((section(".ramtext")))
-void usb_ack_out(void) {
+void epfifo_usb_ack_out(uint8_t epno) {
+    (void)epno;
     // usb_ep_0_out_dtb_write(1);
     while (usb_ep_0_out_respond_read() == EPF_ACK)
         ;
@@ -311,17 +332,19 @@ void usb_ack_out(void) {
 }
 
 __attribute__((section(".ramtext")))
-void usb_err_in(void) {
+void epfifo_usb_err_in(uint8_t epno) {
+    (void)epno;
     usb_ep_0_in_respond_write(EPF_STALL);
 }
 
 __attribute__((section(".ramtext")))
-void usb_err_out(void) {
+void epfifo_usb_err_out(uint8_t epno) {
+    (void)epno;
     usb_ep_0_out_respond_write(EPF_STALL);
 }
 
 __attribute__((section(".ramtext")))
-int usb_recv(void *buffer, unsigned int buffer_len) {
+int epfifo_usb_recv(void *buffer, unsigned int buffer_len) {
 
     // Set the OUT response to ACK, since we are in a position to receive data now.
     usb_ep_0_out_respond_write(EPF_ACK);
@@ -338,28 +361,39 @@ int usb_recv(void *buffer, unsigned int buffer_len) {
             }
             usb_ep0out_rd_ptr = (usb_ep0out_rd_ptr + 1) & (EP0OUT_BUFFERS-1);
         }
+        uint8_t ep_pending = usb_ep_0_out_ev_pending_read();
+        if (ep_pending) {
+            process_rx();
+            usb_ep_0_out_ev_pending_write(ep_pending);
+            usb_ep_0_out_respond_write(EPF_ACK);
+        }
     }
     return 0;
 }
 
-void usb_set_address(uint8_t new_address_) {
+void epfifo_usb_set_address(uint8_t new_address_) {
     new_address = new_address_;
     have_new_address = 1;
 }
 
 __attribute__((section(".ramtext")))
-void usb_poll(void) {
+void epfifo_usb_poll(void) {
     // If some data was received, then process it.
     while (usb_ep0out_rd_ptr != usb_ep0out_wr_ptr) {
         const struct usb_setup_request *request = (const struct usb_setup_request *)(usb_ep0out_buffer[usb_ep0out_rd_ptr]);
-        // unsigned int len = usb_ep0out_buffer_len[usb_ep0out_rd_ptr];
+        unsigned int len = usb_ep0out_buffer_len[usb_ep0out_rd_ptr];
         uint8_t last_tok = usb_ep0out_last_tok[usb_ep0out_rd_ptr];
 
         usb_ep0out_buffer_len[usb_ep0out_rd_ptr] = 0;
         usb_ep0out_rd_ptr = (usb_ep0out_rd_ptr + 1) & (EP0OUT_BUFFERS-1);
 
         if (last_tok == USB_PID_SETUP) {
-            usb_setup(request);
+            if (len == 8) {
+                usb_setup(request);
+            } else {
+                usb_ep_0_in_respond_write(EPF_ACK);
+                usb_ep_0_out_respond_write(EPF_ACK);
+            }
         }
     }
 

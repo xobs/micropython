@@ -71,7 +71,9 @@ SRC_C = \
 	src/stdout-helpers.c \
 	src/time.c \
 	src/uart-core.c \
+	src/usb.c \
 	src/usb-epfifo.c \
+	src/usb-eptri.c \
 	src/usb-dev.c \
 	src/usb-desc.c \
 

@@ -123,6 +123,7 @@ void eptri_usb_init(void) {
     return;
 }
 
+__attribute__((section(".ramtext")))
 static void process_tx(void) {
 
     // Don't allow requeueing -- only queue more data if the system is idle.
@@ -186,6 +187,7 @@ static void process_tx(void) {
     return;
 }
 
+__attribute__((section(".ramtext")))
 static void process_rx(void) {
     // If we already have data in our buffer, don't do anything.
     if (out_have)
@@ -207,6 +209,7 @@ static void process_rx(void) {
         out_buffer_length -= 2;
 }
 
+__attribute__((section(".ramtext")))
 void eptri_usb_send_epno(const void *data, int total_count, uint8_t epno) {
     while ((current_length || current_data) && !(usb_in_status_read() & (1 << CSR_USB_IN_STATUS_IDLE_OFFSET)))
         process_tx();
@@ -231,6 +234,7 @@ void eptri_usb_wait_for_send_done(void) {
         ;
 }
 
+__attribute__((section(".ramtext")))
 void eptri_usb_isr(void) {
     uint8_t setup_packet[10];
     uint32_t setup_length;
@@ -343,14 +347,21 @@ int eptri_usb_can_getc(void) {
 }
 
 extern volatile uint8_t terminal_is_connected;
+__attribute__((section(".ramtext")))
 int eptri_usb_can_putc(void) {
     return terminal_is_connected && ! (usb_out_status_read() & (1 << CSR_USB_OUT_STATUS_HAVE_OFFSET));
 }
 
+__attribute__((section(".ramtext")))
 int eptri_usb_write(const char *buf, int count) {
+    int to_write = 64;
+    if (to_write > count)
+        to_write = count;
     eptri_usb_send_epno(buf, count, 2);
+    return to_write;
 }
 
+__attribute__((section(".ramtext")))
 int eptri_usb_getc(void) {
     uint8_t c = 0;
     if ((serial_buffer_ptr >= 0) && (serial_buffer_ptr < serial_buffer_len)) {

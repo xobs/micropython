@@ -86,6 +86,9 @@ void eptri_usb_connect(void) {
     // Accept incoming data by default.
     usb_out_ctrl_write(1 << CSR_USB_OUT_CTRL_ENABLE_OFFSET);
 
+    // Also accept data on ep1
+    usb_out_ctrl_write((1 << CSR_USB_OUT_CTRL_ENABLE_OFFSET) | 1);
+
     // Also accept data on ep2
     usb_out_ctrl_write((1 << CSR_USB_OUT_CTRL_ENABLE_OFFSET) | 2);
 
@@ -358,16 +361,20 @@ int eptri_usb_getc(void) {
     return c;
 }
 
+__attribute__((section(".ramtext")))
 void eptri_usb_putc(char c) {
     eptri_usb_send_epno(&c, 1, 2);
 }
 
+__attribute__((section(".ramtext")))
 void eptri_usb_poll(void) {
-    if ((out_have) && (out_ep == 2)) {
-        memcpy(serial_buffer, out_buffer, out_buffer_length);
-        serial_buffer_len = out_buffer_length;
-        serial_buffer_ptr = 0;
+    if (out_have) {
+        if (out_ep == 2) {
+            memcpy(serial_buffer, (void *)out_buffer, out_buffer_length);
+            serial_buffer_len = out_buffer_length;
+            serial_buffer_ptr = 0;
+        }
         out_have = 0;
-        usb_out_ctrl_write((1 << CSR_USB_OUT_CTRL_ENABLE_OFFSET) | 2);
+        usb_out_ctrl_write((1 << CSR_USB_OUT_CTRL_ENABLE_OFFSET) | out_ep);
     }
 }

@@ -13,6 +13,24 @@
 #define SP_D2_PIN 2
 #define SP_D3_PIN 3
 
+enum pin {
+	PIN_MOSI = 0,
+	PIN_CLK = 1,
+	PIN_CS = 2,
+	PIN_MISO_EN = 3,
+	PIN_MISO = 4, // Value is ignored
+};
+static inline unsigned char lxspi_miso_read(void) {
+	unsigned char r = csr_readl(0xe0007804L);
+	return r;
+}
+static inline void lxspi_bitbang_write(unsigned char value) {
+	csr_writel(value, 0xe0007800L);
+}
+static inline void lxspi_bitbang_en_write(unsigned char value) {
+	csr_writel(value, 0xe0007808L);
+}
+
 #define PI_OUTPUT 1
 #define PI_INPUT 0
 
@@ -33,14 +51,21 @@ static int gpioRead(int pin) {
 
 __attribute__((section(".ramtext")))
 void spiBegin(void) {
-    gpioWrite(SP_WP_PIN, 1);
-    gpioWrite(SP_HOLD_PIN, 1);
-	gpioWrite(SP_CS_PIN, 0);
+	if (version_major_read() == 2)
+		lxspi_bitbang_write((0 << PIN_CLK) | (0 << PIN_CS));
+	else {
+		gpioWrite(SP_WP_PIN, 1);
+		gpioWrite(SP_HOLD_PIN, 1);
+		gpioWrite(SP_CS_PIN, 0);
+	}
 }
 
 __attribute__((section(".ramtext")))
 void spiEnd(void) {
-	gpioWrite(SP_CS_PIN, 1);
+	if (version_major_read() == 2)
+		lxspi_bitbang_write((0 << PIN_CLK) | (1 << PIN_CS));
+	else
+		gpioWrite(SP_CS_PIN, 1);
 }
 
 __attribute__((section(".ramtext")))
@@ -71,13 +96,52 @@ static uint8_t spiXfer(uint8_t out) {
 }
 
 __attribute__((section(".ramtext")))
+static void lxspi_single_tx(uint8_t out) {
+	int bit;
+
+	for (bit = 7; bit >= 0; bit--) {
+		if (out & (1 << bit)) {
+			lxspi_bitbang_write((0 << PIN_CLK) | (1 << PIN_MOSI));
+			lxspi_bitbang_write((1 << PIN_CLK) | (1 << PIN_MOSI));
+			lxspi_bitbang_write((0 << PIN_CLK) | (1 << PIN_MOSI));
+		} else {
+			lxspi_bitbang_write((0 << PIN_CLK) | (0 << PIN_MOSI));
+			lxspi_bitbang_write((1 << PIN_CLK) | (0 << PIN_MOSI));
+			lxspi_bitbang_write((0 << PIN_CLK) | (0 << PIN_MOSI));
+		}
+	}
+}
+
+__attribute__((section(".ramtext")))
+static uint8_t lxspi_single_rx(void) {
+	int bit = 0;
+	uint8_t in = 0;
+
+	lxspi_bitbang_write((1 << PIN_MISO_EN) | (0 << PIN_CLK));
+
+	while (bit++ < 8) {
+		lxspi_bitbang_write((1 << PIN_MISO_EN) | (1 << PIN_CLK));
+		in = (in << 1) | lxspi_miso_read();
+		lxspi_bitbang_write((1 << PIN_MISO_EN) | (0 << PIN_CLK));
+	}
+
+	return in;
+}
+
+__attribute__((section(".ramtext")))
 void spiCommand(uint8_t cmd) {
-    spiXfer(cmd);
+	if (version_major_read() == 2)
+		lxspi_single_tx(cmd);
+	else
+	    spiXfer(cmd);
 }
 
 __attribute__((section(".ramtext")))
 uint8_t spiCommandRx(void) {
-    return spiXfer(0xff);
+	if (version_major_read() == 2)
+		return lxspi_single_rx();
+	else
+	    return spiXfer(0xff);
 }
 
 __attribute__((section(".ramtext")))
@@ -183,15 +247,24 @@ uint32_t spiId(void) {
 __attribute__((section(".ramtext")))
 void spiStartBB(void) {
     irq_setie(0);
-    // Now that everything is copied to RAM, disable memory-mapped SPI mode.
-    // This puts the SPI into bit-banged mode, which allows us to write to it.
-    picorvspi_cfg1_write(0x20); // CS high
-    picorvspi_cfg2_write(0x0d); // IO0, WP, HOLD pins to output
-    picorvspi_cfg4_write(0);
+	if (version_major_read() == 2)
+		// Disable memory-mapped mode and enable bit-bang mode
+		lxspi_bitbang_en_write(1);
+	else {
+		// Now that everything is copied to RAM, disable memory-mapped SPI mode.
+		// This puts the SPI into bit-banged mode, which allows us to write to it.
+		picorvspi_cfg1_write(0x20); // CS high
+		picorvspi_cfg2_write(0x0d); // IO0, WP, HOLD pins to output
+		picorvspi_cfg4_write(0);
+	}
 }
 
 __attribute__((section(".ramtext")))
 void spiEndBB(void) {
-    picorvspi_cfg4_write(0x80);
+	if (version_major_read() == 2)
+		// Re-enable memory-mapped mode
+		lxspi_bitbang_en_write(0);
+	else
+	    picorvspi_cfg4_write(0x80);
     irq_setie(1);
 }

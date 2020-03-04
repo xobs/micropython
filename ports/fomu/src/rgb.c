@@ -8,9 +8,9 @@ enum led_registers {
     LEDDOFR = 11,
     LEDDBCRR = 5,
     LEDDBCFR = 6,
-    LEDDPWRR = 1,
-    LEDDPWRG = 2,
-    LEDDPWRB = 3,
+    LEDDPWRR = 2,
+    LEDDPWRG = 3,
+    LEDDPWRB = 1,
 };
 
 #define BREATHE_ENABLE (1 << 7)
@@ -70,9 +70,9 @@ void rgb_mode_idle(void) {
             | BREATHE_MODE_MODULATE | BREATHE_RATE(2), LEDDBCRR);
     rgb_write(BREATHE_ENABLE | BREATHE_MODE_MODULATE | BREATHE_RATE(3), LEDDBCFR);
 
-    rgb_write(0x00/4, LEDDPWRG); // Red
-    rgb_write(0x4a/4, LEDDPWRB); // Green
-    rgb_write(0xe1/4, LEDDPWRR); // Blue
+    rgb_write(0x00/4, LEDDPWRR); // Red
+    rgb_write(0x4a/4, LEDDPWRG); // Green
+    rgb_write(0xe1/4, LEDDPWRB); // Blue
 }
 
 void rgb_mode_writing(void) {
@@ -84,9 +84,9 @@ void rgb_mode_writing(void) {
             | BREATHE_MODE_MODULATE | BREATHE_RATE(1), LEDDBCRR);
     rgb_write(BREATHE_ENABLE | BREATHE_MODE_MODULATE | BREATHE_RATE(3), LEDDBCFR);
 
-    rgb_write(0x00/4, LEDDPWRG); // Red
-    rgb_write(0x7a/4, LEDDPWRB); // Green
-    rgb_write(0x51/4, LEDDPWRR); // Blue
+    rgb_write(0x00/4, LEDDPWRR); // Red
+    rgb_write(0x7a/4, LEDDPWRG); // Green
+    rgb_write(0x51/4, LEDDPWRB); // Blue
 }
 
 void rgb_mode_error(void) {
@@ -98,9 +98,9 @@ void rgb_mode_error(void) {
             | BREATHE_MODE_MODULATE | BREATHE_RATE(2), LEDDBCRR);
     rgb_write(BREATHE_ENABLE | BREATHE_MODE_MODULATE | BREATHE_RATE(3), LEDDBCFR);
 
-    rgb_write(0xf0/4, LEDDPWRG); // Red
-    rgb_write(0x0a/4, LEDDPWRB); // Green
-    rgb_write(0x01/4, LEDDPWRR); // Blue
+    rgb_write(0xf0/4, LEDDPWRR); // Red
+    rgb_write(0x0a/4, LEDDPWRG); // Green
+    rgb_write(0x01/4, LEDDPWRB); // Blue
 }
 
 void rgb_mode_done(void) {
@@ -112,7 +112,7 @@ void rgb_mode_done(void) {
             | BREATHE_MODE_MODULATE | BREATHE_RATE(2), LEDDBCRR);
     rgb_write(BREATHE_ENABLE | BREATHE_MODE_MODULATE | BREATHE_RATE(3), LEDDBCFR);
 
-    rgb_write(0x14/4, LEDDPWRG); // Red
-    rgb_write(0xff/4, LEDDPWRB); // Green
-    rgb_write(0x44/4, LEDDPWRR); // Blue
+    rgb_write(0x14/4, LEDDPWRR); // Red
+    rgb_write(0xff/4, LEDDPWRG); // Green
+    rgb_write(0x44/4, LEDDPWRB); // Blue
 }

@@ -69,6 +69,11 @@ CFLAGS += -DCIRCUITPY_ALWAYS_BUILD=$(CIRCUITPY_ALWAYS_BUILD)
 #
 # *** You can override any of the defaults by defining them in your mpconfigboard.mk.
 
+ifndef CIRCUITPY_AES
+CIRCUITPY_AES = $(CIRCUITPY_FULL_BUILD)
+endif
+CFLAGS += -DCIRCUITPY_AES=$(CIRCUITPY_AES)
+
 ifndef CIRCUITPY_ANALOGIO
 CIRCUITPY_ANALOGIO = $(CIRCUITPY_DEFAULT_BUILD)
 endif

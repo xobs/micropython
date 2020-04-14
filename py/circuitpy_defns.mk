@@ -99,6 +99,9 @@ endif
 ###
 # Select which builtin modules to compile and include.
 
+ifeq ($(CIRCUITPY_AES),1)
+SRC_PATTERNS += aes/%
+endif
 ifeq ($(CIRCUITPY_ANALOGIO),1)
 SRC_PATTERNS += analogio/%
 endif
@@ -318,6 +321,8 @@ SRC_SHARED_MODULE_ALL = \
 	_stage/Layer.c \
 	_stage/Text.c \
 	_stage/__init__.c \
+	aes/__init__.c \
+	aes/aes.c \
 	audiopwmio/__init__.c \
 	audioio/__init__.c \
 	audiocore/__init__.c \

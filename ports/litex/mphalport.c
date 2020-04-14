@@ -68,6 +68,14 @@ extern void SysTick_Handler(void);
 
 __attribute__((section(".ramtext")))
 void isr(void) {
+    unsigned long __scause;
+    asm volatile ("csrr %0, scause" :"=r"(__scause));
+
+    if ((__scause & 0x80000000)) {
+        asm("ebreak");
+        while (1);
+    }
+
     uint8_t irqs = irq_pending() & irq_getmask();
 
 #ifdef CFG_TUSB_MCU

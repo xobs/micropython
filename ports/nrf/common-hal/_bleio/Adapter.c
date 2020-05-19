@@ -720,7 +720,7 @@ void common_hal_bleio_adapter_start_advertising(bleio_adapter_obj_t *self, bool 
     } else {
         if (SEC_TO_UNITS(timeout, UNIT_10_MS) > BLE_GAP_ADV_TIMEOUT_LIMITED_MAX) {
             mp_raise_bleio_BluetoothError(translate("Timeout is too long: Maximum timeout length is %d seconds"),
-                                        UNITS_TO_SEC(BLE_GAP_ADV_TIMEOUT_LIMITED_MAX, UNIT_10_MS);
+                                        UNITS_TO_SEC(BLE_GAP_ADV_TIMEOUT_LIMITED_MAX, UNIT_10_MS));
         }
 
         // Note that the common-hal layer has already determined that if we

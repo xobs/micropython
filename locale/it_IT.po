@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2020-05-19 15:01+0800\n"
+"POT-Creation-Date: 2020-05-19 21:07+0800\n"
 "PO-Revision-Date: 2018-10-02 16:27+0200\n"
 "Last-Translator: Enrico Paganin <enrico.paganin@mail.com>\n"
 "Language-Team: \n"
@@ -259,6 +259,10 @@ msgstr "pow() con tre argmomenti non supportata"
 #: ports/atmel-samd/common-hal/rotaryio/IncrementalEncoder.c
 msgid "A hardware interrupt channel is already in use"
 msgstr "Un canale di interrupt hardware è già in uso"
+
+#: shared-bindings/_bleio/Adapter.c
+msgid "A timeout must be specified when advertising anonymously"
+msgstr ""
 
 #: shared-bindings/_bleio/Address.c
 #, fuzzy, c-format

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2020-05-19 15:01+0800\n"
+"POT-Creation-Date: 2020-05-19 21:07+0800\n"
 "PO-Revision-Date: 2020-03-30 22:11+0000\n"
 "Last-Translator: Tannewt <devnull@unpythonic.net>\n"
 "Language-Team: English <https://later.unpythonic.net/projects/circuitpython/"
@@ -264,6 +264,10 @@ msgstr ""
 #: ports/atmel-samd/common-hal/rotaryio/IncrementalEncoder.c
 msgid "A hardware interrupt channel is already in use"
 msgstr "Avast! A hardware interrupt channel be used already"
+
+#: shared-bindings/_bleio/Adapter.c
+msgid "A timeout must be specified when advertising anonymously"
+msgstr ""
 
 #: shared-bindings/_bleio/Address.c
 #, c-format

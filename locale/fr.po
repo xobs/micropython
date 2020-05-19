@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: 0.1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2020-05-19 15:01+0800\n"
+"POT-Creation-Date: 2020-05-19 21:07+0800\n"
 "PO-Revision-Date: 2020-05-17 20:56+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
 "Language-Team: French <https://later.unpythonic.net/projects/circuitpython/"
@@ -270,6 +270,10 @@ msgstr "pow() non supporté avec 3 arguments"
 #: ports/atmel-samd/common-hal/rotaryio/IncrementalEncoder.c
 msgid "A hardware interrupt channel is already in use"
 msgstr "Un canal d'interruptions matérielles est déjà utilisé"
+
+#: shared-bindings/_bleio/Adapter.c
+msgid "A timeout must be specified when advertising anonymously"
+msgstr ""
 
 #: shared-bindings/_bleio/Address.c
 #, c-format

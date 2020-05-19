@@ -189,8 +189,14 @@ STATIC mp_obj_t bleio_adapter_start_advertising(mp_uint_t n_args, const mp_obj_t
     }
 
     bool connectable = args[ARG_connectable].u_bool;
+
     bool anonymous = args[ARG_anonymous].u_bool;
     uint32_t timeout = args[ARG_timeout].u_int;
+
+    if (anonymous && !timeout) {
+        mp_raise_ValueError(translate("A timeout must be specified when advertising anonymously"));
+    }
+
     if (data_bufinfo.len > 31 && connectable && scan_response_bufinfo.len > 0) {
         mp_raise_bleio_BluetoothError(translate("Cannot have scan responses for extended, connectable advertisements."));
     }
